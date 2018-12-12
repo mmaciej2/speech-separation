@@ -43,28 +43,15 @@ class Collator():
       error_msg = "batch must contain tensors, numbers, dicts or lists; found {}"
       elem_type = type(batch[0])
       if isinstance(batch[0], collections.Mapping):
-        self.sort_inds = np.argsort(np.array([len(d[self.key]) for d in batch]))[::-1]
-        return {key: self.__call__([d[key] for d in batch]) for key in batch[0]}
-      elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-          and elem_type.__name__ != 'string_':
-        elem = batch[0]
-        if elem_type.__name__ == 'ndarray':
-          # array of string classes and object
-          if re.search('[SaUO]', elem.dtype.str) is not None:
-            raise TypeError(error_msg.format(elem.dtype))
-
-          return pack_sequence([(torch.from_numpy(batch[i])).float() for i in self.sort_inds])
-        if elem.shape == ():  # scalars
-          py_type = float if elem.dtype.name.startswith('float') else int
-          return numpy_type_map[elem.dtype.name](list(map(py_type, [batch[i] for i in self.sort_inds])))
-      elif isinstance(batch[0], torch._six.int_classes):
-        return torch.LongTensor([batch[i] for i in self.sort_inds])
-      elif isinstance(batch[0], float):
-        return torch.DoubleTensor([batch[i] for i in self.sort_inds])
-      elif isinstance(batch[0], torch._six.string_classes):
-        return [batch[i] for i in self.sort_inds]
-
-    raise TypeError((error_msg.format(type(batch[0]))))
+        sort_inds = np.argsort(np.array([len(d[self.key]) for d in batch]))[::-1]
+        return {key: self.__call__([batch[i][key] for i in sort_inds]) for key in batch[0]}
+      elif elem_type.__module__ == 'numpy' and elem_type.__name__ == 'ndarray':
+        # array of string classes and object
+        if re.search('[SaUO]', batch[0].dtype.str) is not None:
+          raise TypeError(error_msg.format(elem.dtype))
+        return pack_sequence([(torch.from_numpy(b)).float() for b in batch])
+      else:
+        return default_collate(batch)
 
 # Define dataset
 class TrainSet2mix(Dataset):
