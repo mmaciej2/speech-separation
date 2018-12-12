@@ -3,7 +3,7 @@
 #$ -S /bin/bash
 #$ -M mmaciej2@jhu.edu
 #$ -m eas
-#$ -l gpu=1,hostname=b1[123456789]*|c0*|b2*&!c06*,ram_free=8G,mem_free=8G,h_rt=72:00:00
+#$ -l gpu=1,hostname=(b1[123456789]*|c0*|b2*)&!c06*&!c09*,ram_free=8G,mem_free=8G
 #$ -r no
 set -e
 device=`free-gpu`
@@ -16,6 +16,17 @@ cv_filelist=filelists/mixer6_CH02_cv.txt
 copy_data_to_gpu=true
 
 
+start_epoch=0
+num_epochs=200
+
+
+echo "args:"
+echo "  arch: $arch"
+echo "  dirout: $dirout"
+echo "  train_filelist: $train_filelist"
+echo "  cv_filelist: $cv_filelist"
+echo "  copy_data_to_gpu: $copy_data_to_gpu"
+echo ""
 if [ "$copy_data_to_gpu" = true ]; then
   filename=$(basename $train_filelist)
   name="${filename%.*}"
@@ -32,7 +43,9 @@ echo "Working on machine $HOSTNAME"
 mkdir -p $dirout/intermediate_models $dirout/plots /export/${HOSTNAME}/mmaciej2
 
 python3 train_qsub.py $arch $device $train_filelist $dirout \
-                      --cv-filelist $cv_filelist \
-                      --train-copy-location $datadir
+                      --cv-filelist "$cv_filelist" \
+                      --train-copy-location "$datadir" \
+                      --start-epoch $start_epoch \
+                      --num-epochs $num_epochs
 
-rm -r $datadir
+if [ "$copy_data_to_gpu" = true ]; then rm -r $datadir; fi

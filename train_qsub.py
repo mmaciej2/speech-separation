@@ -117,6 +117,7 @@ def main():
     if epoch % 5 == 4:
       print("Saving model for epoch "+str(epoch+1).zfill(3))
       torch.save(model.state_dict(), args.dirout+'/intermediate_models/model-'+str(epoch+1).zfill(3))
+      os.system("mkdir -p "+args.dirout+'/plots/epoch'+str(epoch+1).zfill(3))
       qp.line(epoch_losses, epoch_cv_losses, args.dirout+'/plots/epoch'+str(epoch+1).zfill(3)+'/losses_'+str(args.start_epoch+1).zfill(3)+'-'+str(epoch+1).zfill(3)+'.png')
     sys.stdout.flush()
 
