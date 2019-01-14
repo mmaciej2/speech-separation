@@ -14,7 +14,7 @@ gpu_data_dir=/export/${HOSTNAME}/mmaciej2
 
 if [ $# -le 3 ]; then
   echo "Usage:"
-  echo "$0 <arch> <dir_out> <train_datadir>"
+  echo "$0 <arch> <dir_out> <train_datadir> [opts]"
   echo "optional arguments:"
   echo "  --cv-datadir"
   echo "  --copy-data-to-gpu  <true>"
@@ -46,7 +46,7 @@ while true; do
       echo "  $name: $2"
       shift 2
       ;;
-    *) echo "ERRO: malformed arguemnts"
+    *) echo "ERROR: malformed arguemnts"
       exit 1
       ;;
   esac
@@ -70,13 +70,11 @@ if [ -d "$datadir" ]; then
   exit 1;
 fi
 mkdir -p $dirout/intermediate_models $dirout/train_stats/plots
-if [ $start_epoch -ne 0 ]; then
-  for file in $dirout/train_stats/{train,cv}_loss.txt; do
-    touch $file
-    awk -v ep=$start_epoch '{if($1<=ep){print $0}}' $file > ${file}.tmp
-    mv ${file}.tmp $file
-  done
-fi
+for file in $dirout/train_stats/{train,cv}_loss.txt; do
+  touch $file
+  awk -v ep=$start_epoch '{if($1<=ep){print $0}}' $file > ${file}.tmp
+  mv ${file}.tmp $file
+done
 
 python3 steps/train_qsub.py $arch $device $train_feats $dirout \
                             --cv-feats "$cv_feats" \

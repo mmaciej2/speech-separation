@@ -5,13 +5,8 @@ import argparse
 import sys
 import os
 import numpy as np
-import collections
-import re
 
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_sequence, pack_padded_sequence, pad_packed_sequence
-import torch.nn as nn
-import torch.nn.functional as F
+from torch.utils.data import DataLoader
 import torch.optim as optim
 
 sys.path.append('archs')

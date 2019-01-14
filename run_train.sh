@@ -7,7 +7,7 @@ stage=0
 arch=uPIT
 train_set=mixer6_CH02_tr
 cv_set=mixer6_CH02_cv
-email= # set this if you would like qsub email and run the train command in the background
+email= # set this if you would like qsub email and to run the train command in the background
 
 featdir=`pwd`/feats
 copy_data_to_gpu=true
@@ -30,6 +30,7 @@ if [ $stage -le 0 ]; then
   # Note: make sure the filelists/path.sh file contains appropriate information
   #  for each of your datasets
   echo "### Preparing data directories (stage 0) ###"
+
   for dataset in $train_set $cv_set; do
     local/prepare_data_dir.sh $dataset
   done
@@ -38,6 +39,7 @@ fi
 # Extract features
 if [ $stage -le 1 ]; then
   echo "### Extracting features (stage 1) ###"
+
   for data_dir in $train_data_dir $cv_data_dir; do
     steps/extract_feats.py $data_dir "train" $featdir/$(basename $data_dir)_train
   done
@@ -46,8 +48,10 @@ fi
 # Train model
 if [ $stage -le 2 ]; then
   echo "### Training model (stage 2) ###"
+
   exp_dir=exp/${arch}_${train_set}
   mkdir -p $exp_dir
+
   qsub -j y -o $exp_dir/train_\$JOB_ID.log $opt \
     steps/qsub_train.sh \
     $arch \

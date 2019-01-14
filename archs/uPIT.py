@@ -84,14 +84,14 @@ class TrainSet(Dataset):
 class TestSet(Dataset):
 
   def __init__(self, filelist):
-    self.list = [line.rstrip('\n') for line in open(filelist)]
+    self.list = [line.rstrip('\n').split(' ')[1] for line in open(filelist)]
     self.collator = Collator('mix')
 
   def __len__(self):
     return len(self.list)
 
   def __getitem__(self, idx):
-    mix_mag_spec = np.load(self.list[idx]).transpose()
+    mix_mag_spec = np.abs(np.load(self.list[idx])['mix']).transpose()
 
     sample = {'mix': mix_mag_spec, 'name': os.path.basename(self.list[idx])}
     return sample
@@ -173,5 +173,7 @@ def compute_masks(model, batch_sample, out_dir):
 
   for i in range(len(name)):
     mask = mask_out[i].cpu().numpy().transpose()[:,0:lens[i]]
-    np.save(os.path.join(out_dir, 's1', name[i]), mask[0:257])
-    np.save(os.path.join(out_dir, 's2', name[i]), mask[257:514])
+    file_dict = dict()
+    file_dict['s1'] = mask[0:257]
+    file_dict['s2'] = mask[257:514]
+    np.savez_compressed(out_dir+'/'+name[i], **file_dict)
