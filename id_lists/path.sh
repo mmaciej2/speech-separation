@@ -29,7 +29,7 @@ wav_dirs=( \
   /export/a15/mmaciej2/data/WSJ-mix/data/2speakers/wav8k/min/tr/ \
   /export/a15/mmaciej2/data/WSJ-mix/data/2speakers/wav8k/min/tt/ \
   /export/a15/mmaciej2/data/CHiME5-mix/data/2speakers/wav8k/min/close_talking_dev_new/ \
-  /export/a15/mmaciej2/data/CHiME5-mix/data/2speakers/wav8k/min/close_talking_train/ \
+  /export/a15/mmaciej2/data/CHiME5-mix/data/2speakers/wav8k/min/close_talking_train_new/ \
   /export/a15/mmaciej2/data/CHiME5-mix/data/2speakers/wav8k/min/U01_dev/ \
   /export/a15/mmaciej2/data/CHiME5-mix/data/2speakers/wav8k/min/U01_train/ \
   /export/a15/mmaciej2/data/mixer6-mix/data/2speakers/wav8k/min/CH02_cv/ \
