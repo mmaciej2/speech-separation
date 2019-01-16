@@ -19,8 +19,8 @@ def get_args():
                       help="GPU ID")
   parser.add_argument("model", type=str,
                       help="Trained model to use")
-  parser.add_argument("feats", type=str,
-                      help="Test sample features file")
+  parser.add_argument("data_dir", metavar="data-dir", type=str,
+                      help="Test data directory")
   parser.add_argument("dirout", type=str,
                       help="Output directory")
 
@@ -43,7 +43,7 @@ def main():
   tmp.cuda()
 
   print("loading dataset")
-  dataset = m.TestSet(args.feats)
+  dataset = m.TestSet(args.data_dir+"/feats_test.scp")
   if args.batch_size <= len(dataset):
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, collate_fn=dataset.collator)
   else:

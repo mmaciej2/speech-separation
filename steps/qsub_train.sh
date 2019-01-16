@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -S /bin/bash
 #$ -m eas
-#$ -l gpu=1,hostname=(b1[123456789]*|c0*|b2*)&!c06*&!c09*,ram_free=8G,mem_free=8G
+#$ -l gpu=1,hostname=(b1*|c0*)&!b10*&!c06*&!c09*,ram_free=8G,mem_free=8G
 #$ -r no
 set -e
 device=`free-gpu`
@@ -53,9 +53,6 @@ while true; do
 done
 echo ""
 
-train_feats=$train_datadir/feats_train.scp
-[ -z "$cv_datadir" ] || cv_feats=$cv_datadir/feats_train.scp
-
 echo "Working on machine $HOSTNAME"
 if [ "$copy_data_to_gpu" = true ]; then
   name=$(basename $train_datadir)
@@ -76,8 +73,8 @@ for file in $dirout/train_stats/{train,cv}_loss.txt; do
   mv ${file}.tmp $file
 done
 
-python3 steps/train_qsub.py $arch $device $train_feats $dirout \
-                            --cv-feats "$cv_feats" \
+python3 steps/train_qsub.py $arch $device $train_datadir $dirout \
+                            --cv-data-dir "$cv_datadir" \
                             --train-copy-location "$datadir" \
                             --start-epoch $start_epoch \
                             --num-epochs $num_epochs \

@@ -22,13 +22,13 @@ def get_args():
                       help="DNN architecture file")
   parser.add_argument("gpu_id", metavar="gpu-id", type=int,
                       help="GPU ID")
-  parser.add_argument("feats", type=str,
-                      help="Training sample features file")
+  parser.add_argument("data_dir", metavar="data-dir", type=str,
+                      help="Training data directory")
   parser.add_argument("dirout", type=str,
                       help="Output directory")
 
-  parser.add_argument("--cv-feats", type=str,
-                      help="Cross validation sample features file",
+  parser.add_argument("--cv-data-dir", type=str,
+                      help="Cross validation data directory",
                       default="")
   parser.add_argument("--train-copy-location", type=str,
                       help="Copy training data here for I/O purposes",
@@ -74,11 +74,11 @@ def main():
 
 
   print("loading datset")
-  dataset = m.TrainSet(args.feats, args.train_copy_location)
+  dataset = m.TrainSet(args.data_dir+"/feats_train.scp", args.train_copy_location)
   train_size = len(dataset)
   dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator, num_workers=1)
-  if args.cv_feats:
-    cv_dataset = m.TrainSet(args.cv_feats)
+  if args.cv_data_dir:
+    cv_dataset = m.TrainSet(args.cv_data_dir+"/feats_train.scp")
     cv_size = len(cv_dataset)
     cv_dataloader = DataLoader(cv_dataset, batch_size=args.batch_size, collate_fn=cv_dataset.collator)
 
@@ -91,7 +91,7 @@ def main():
   epoch_losses = [[], []]
   epoch_cv_losses = [[], []]
   lossF = open(loss_file, 'a')
-  if args.cv_feats:
+  if args.cv_data_dir:
     cv_lossF = open(cv_loss_file, 'a')
 
   if args.start_epoch == 0:
@@ -99,7 +99,7 @@ def main():
   else:
     model.load_state_dict(torch.load(int_model_dir+str(args.start_epoch).zfill(3)+'.mdl', map_location=lambda storage, loc: storage.cuda()))
     load_losses(loss_file, epoch_losses)
-    if args.cv_feats:
+    if args.cv_data_dir:
       load_losses(cv_loss_file, epoch_cv_losses)
 
   print("training")
@@ -113,7 +113,7 @@ def main():
       torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
       optimizer.step()
 
-    if args.cv_feats and epoch % 5 == 4:
+    if args.cv_data_dir and epoch % 5 == 4:
       cv_loss = 0.0
       with torch.no_grad():
         for i_batch_cv, sample_batch_cv in enumerate(cv_dataloader):

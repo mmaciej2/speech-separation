@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -S /bin/bash
 #$ -m eas
-#$ -l gpu=1,hostname=!c06*&b1[1234589]*|c*|b2*,ram_free=8G,mem_free=8G,h_rt=72:00:00
+#$ -l gpu=1,hostname=c0*&!c06*&!c09*,ram_free=8G,mem_free=8G,h_rt=48:00:00
 #$ -r no
 set -e
 device=`free-gpu`
@@ -57,8 +57,7 @@ fi
 echo "Working on machine $HOSTNAME"
 
 for data_dir in $test_data_dirs; do
-  eval_feats=$data_dir/feats_test.scp
   dir_out=$base_dir_out/$(basename $data_dir)/masks
-  python3 steps/eval_qsub.py $arch $device $model $eval_feats $dir_out \
+  python3 steps/eval_qsub.py $arch $device $model $data_dir $dir_out \
                              --batch-size $batch_size
 done
