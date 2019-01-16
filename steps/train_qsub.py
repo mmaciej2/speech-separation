@@ -11,7 +11,8 @@ import torch.optim as optim
 
 sys.path.append('archs')
 
-import quick_plot as qp
+sys.path.append('tools')
+import plot
 
 def get_args():
   parser = argparse.ArgumentParser(
@@ -133,11 +134,11 @@ def main():
       print("Saving model for epoch "+str(epoch+1).zfill(3))
       torch.save(model.state_dict(), int_model_dir+str(epoch+1).zfill(3)+'.mdl')
       os.system("mkdir -p "+plot_dir+'epoch'+str(epoch+1).zfill(3))
-      qp.line(epoch_losses, epoch_cv_losses, plot_dir+'epoch'+str(epoch+1).zfill(3)+'/losses_'+str(epoch_losses[0][0]).zfill(3)+'-'+str(epoch+1).zfill(3)+'.png')
+      plot.plot_loss(epoch_losses, epoch_cv_losses, plot_dir+'epoch'+str(epoch+1).zfill(3)+'/Loss_'+str(epoch_losses[0][0]).zfill(3)+'-'+str(epoch+1).zfill(3)+'.png')
     sys.stdout.flush()
 
   torch.save(model.state_dict(), args.dirout+'/final.mdl')
-  qp.line(epoch_losses, epoch_cv_losses, plot_dir+'losses_'+str(epoch_losses[0][0]).zfill(3)+'-'+str(args.num_epochs).zfill(3)+'.png')
+  plot.plot_loss(epoch_losses, epoch_cv_losses, plot_dir+'Loss_'+str(epoch_losses[0][0]).zfill(3)+'-'+str(args.num_epochs).zfill(3)+'.png')
 
 if __name__ == '__main__':
   main()

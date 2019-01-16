@@ -14,7 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-import quick_plot as qp
+sys.path.append('tools')
+import plot
 
 
 # finds filename for mask corresponding to a mix spec
@@ -150,12 +151,12 @@ def compute_loss(model, batch_sample, plotdir=""):
 
   if plotdir:
     os.system("mkdir -p "+plotdir)
-    qp.plot(mixes[0].detach().cpu().numpy(), plotdir+'/mix.png')
-    qp.plot(masked[0].detach().cpu().numpy(), plotdir+'/masked_mix.png')
+    plot.plot_spec(mixes[0].detach().cpu().numpy(), plotdir+'/Mixture.png')
+    plot.plot_spec(masked[0].detach().cpu().numpy(), plotdir+'/Masked_Mixture.png')
     if loss1[0] < loss2[0]:
-      qp.plot(permutations1[0].detach().cpu().numpy(), plotdir+'/chosen_permutation.png')
+      plot.plot_spec(permutations1[0].detach().cpu().numpy(), plotdir+'/Chosen_Permutation.png')
     else:
-      qp.plot(permutations2[0].detach().cpu().numpy(), plotdir+'/chosen_permutation.png')
+      plot.plot_spec(permutations2[0].detach().cpu().numpy(), plotdir+'/Chosen_Permutation.png')
 
   return torch.mean(torch.min(loss1, loss2)/lengths/514)
 

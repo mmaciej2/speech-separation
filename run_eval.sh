@@ -2,7 +2,7 @@
 
 set -e
 
-stage=4
+stage=0
 
 arch=uPIT
 model_dir=exp/uPIT_mixer6_CH02_tr
