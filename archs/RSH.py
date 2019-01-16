@@ -47,7 +47,6 @@ class Collator():
     if not self.key:
       return default_collate(batch)
     else:
-      sys.stdout.flush()
       batch_out = []
       if "num_spk" in batch[0].keys():
         max_spk = max([int(d["num_spk"]) for d in batch])
