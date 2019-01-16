@@ -74,11 +74,11 @@ def main():
 
 
   print("loading datset")
-  dataset = m.TrainSet(args.data_dir+"/feats_train.scp", args.train_copy_location)
+  dataset = m.TrainSet(args.data_dir, args.train_copy_location)
   train_size = len(dataset)
   dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator, num_workers=1)
   if args.cv_data_dir:
-    cv_dataset = m.TrainSet(args.cv_data_dir+"/feats_train.scp")
+    cv_dataset = m.TrainSet(args.cv_data_dir)
     cv_size = len(cv_dataset)
     cv_dataloader = DataLoader(cv_dataset, batch_size=args.batch_size, collate_fn=cv_dataset.collator)
 

@@ -43,7 +43,7 @@ def main():
   tmp.cuda()
 
   print("loading dataset")
-  dataset = m.TestSet(args.data_dir+"/feats_test.scp")
+  dataset = m.TestSet(args.data_dir)
   if args.batch_size <= len(dataset):
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, collate_fn=dataset.collator)
   else:
