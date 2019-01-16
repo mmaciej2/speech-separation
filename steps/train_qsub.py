@@ -123,11 +123,13 @@ def main():
             cv_loss += m.compute_loss(model, sample_batch_cv)
       print("For epoch: "+str(epoch+1).zfill(3)+" cv set loss is: "+str(cv_loss.detach().cpu().numpy()/cv_size))
       cv_lossF.write(str(epoch+1).zfill(3)+' '+str(cv_loss.detach().cpu().numpy()/cv_size)+'\n')
+      cv_lossF.flush()
       epoch_cv_losses[0].append(epoch+1)
       epoch_cv_losses[1].append(cv_loss.detach().cpu().numpy()/cv_size)
 
     print("For epoch: "+str(epoch+1).zfill(3)+" loss is: "+str(epoch_loss.detach().cpu().numpy()/train_size))
     lossF.write(str(epoch+1).zfill(3)+' '+str(epoch_loss.detach().cpu().numpy()/train_size)+'\n')
+    lossF.flush()
     epoch_losses[0].append(epoch+1)
     epoch_losses[1].append(epoch_loss.detach().cpu().numpy()/train_size)
     if epoch % 5 == 4:
