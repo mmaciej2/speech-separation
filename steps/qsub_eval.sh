@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -S /bin/bash
 #$ -m eas
-#$ -l gpu=1,hostname=c0*&!c06*&!c09*,ram_free=8G,mem_free=8G,h_rt=48:00:00
+#$ -l gpu=1
 #$ -r no
 set -e
 device=`free-gpu`
@@ -12,6 +12,7 @@ if [ $# -le 3 ]; then
   echo "Usage:"
   echo "$0 <arch> <model_dir> <test_data_dir1> [<test_data_dir2> ...] [opts]"
   echo "optional arguments:"
+  echo "  --model-config"
   echo "  --batch-size             <100>"
   echo "  --intermediate-model-num"
   exit 1;
@@ -59,5 +60,7 @@ echo "Working on machine $HOSTNAME"
 for data_dir in $test_data_dirs; do
   dir_out=$base_dir_out/$(basename $data_dir)/masks
   python3 steps/eval_qsub.py $arch $device $model $data_dir $dir_out \
-                             --batch-size $batch_size
+                             --model-config "$model_config" \
+                             --batch-size $batch_size \
+                             --model-config "$model_config"
 done

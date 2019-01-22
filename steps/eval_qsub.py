@@ -24,6 +24,9 @@ def get_args():
   parser.add_argument("dirout", type=str,
                       help="Output directory")
 
+  parser.add_argument("--model-config", type=str,
+                      help="Config file for DNN",
+                      default="")
   parser.add_argument("--batch-size", type=int,
                       help="Batch size",
                       default=100)
@@ -50,7 +53,13 @@ def main():
     dataloader = DataLoader(dataset, batch_size=len(dataset), shuffle=False, collate_fn=dataset.collator)
 
   print("loading model")
-  model = m.EnhBLSTM(args.gpu_id)
+  if args.model_config:
+    kwargs = dict()
+    for line in open(args.model_config):
+      kwargs[line.split('=')[0]] = line.rstrip().split('=')[1]
+    model = m.SepDNN(args.gpu_id, **kwargs)
+  else:
+    model = m.SepDNN(args.gpu_id)
   model.cuda()
   model.load_state_dict(torch.load(args.model, map_location=lambda storage, loc: storage.cuda()))
 

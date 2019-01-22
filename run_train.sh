@@ -1,12 +1,14 @@
 #!/bin/bash
 
 set -e
+. ./cmd.sh
 
 stage=0
 
 arch=uPIT
 train_set=mixer6_CH02_tr
 cv_set=mixer6_CH02_cv
+model_config= # optional config file for model
 email= # set this if you would like qsub email and to run the train command in the background
 
 featdir=`pwd`/feats
@@ -53,12 +55,13 @@ if [ $stage -le 2 ]; then
   mkdir -p $exp_dir
   cp archs/${arch}.py $exp_dir/arch.py
 
-  qsub -j y -o $exp_dir/train_\$JOB_ID.log $opt \
+  qsub -j y -o $exp_dir/train_\$JOB_ID.log $opt $train_cmd \
     steps/qsub_train.sh \
     $arch \
     $exp_dir \
     $train_data_dir \
     --cv-datadir "$cv_data_dir" \
+    --model-config "$model_config" \
     --copy-data-to-gpu "$copy_data_to_gpu" \
     --start-epoch "$start_epoch" \
     --num-epochs "$num_epochs" \

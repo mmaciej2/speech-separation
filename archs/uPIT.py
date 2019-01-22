@@ -6,6 +6,7 @@ import os
 import numpy as np
 import collections
 import re
+import itertools
 
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate, numpy_type_map
@@ -65,14 +66,15 @@ class TrainSet(Dataset):
     return len(self.list)
 
   def __getitem__(self, idx):
-    mix_mag_spec = np.load(self.list[idx])['mix'].transpose()
-    source_mag_spec_1 = np.load(self.list[idx])['s1'].transpose()
-    source_mag_spec_2 = np.load(self.list[idx])['s2'].transpose()
+    feat = np.load(self.list[idx])
+    mix_mag_spec = feat['mix'].transpose()
 
-    permute_1 = np.concatenate((source_mag_spec_1, source_mag_spec_2), axis=1)
-    permute_2 = np.concatenate((source_mag_spec_2, source_mag_spec_1), axis=1)
+    sample = {'mix': mix_mag_spec}
 
-    sample = {'mix': mix_mag_spec, 'permute1': permute_1, 'permute2': permute_2}
+    for src in range(len(feat.files)-1):
+      source_mag_spec = feat['s'+str(src+1)].transpose()
+      sample["source"+str(src+1)] = source_mag_spec
+
     return sample
 
 class TestSet(Dataset):
@@ -91,15 +93,27 @@ class TestSet(Dataset):
     return sample
 
 # define nnet
-class EnhBLSTM(nn.Module):
-  def __init__(self, gpuid):
-    super(EnhBLSTM, self).__init__()
+class SepDNN(nn.Module):
+  def __init__(self, gpuid, **kwargs):
+    super(SepDNN, self).__init__()
 
     self.gpuid = gpuid
 
-    self.blstm = nn.LSTM(257, 600, num_layers=2, bidirectional=True)
+    if 'feat_dim' in kwargs.keys():
+      self.feat_dim = int(kwargs['feat_dim'])
+    else:
+      self.feat_dim = 257
+    if 'num_spk' in kwargs.keys():
+      self.num_spk = int(kwargs['num_spk'])
+    else:
+      self.num_spk = 2
 
-    self.lin = nn.Linear(600*2, 514)
+    for key in kwargs.keys():
+      print('modelparam:', key, kwargs[key])
+
+    self.blstm = nn.LSTM(self.feat_dim, 600, num_layers=2, bidirectional=True)
+
+    self.lin = nn.Linear(600*2, self.feat_dim*self.num_spk)
 
     self.bn = nn.BatchNorm1d(600*2)
 
@@ -112,7 +126,7 @@ class EnhBLSTM(nn.Module):
               torch.randn(2*2, batch_size, 600))
 
   def forward(self, x):
-    # x: packed sequence of dim 257
+    # x: packed sequence of dim feat_dim
 
     x, self.hidden = self.blstm(x, self.hidden)
     # x: packed sequence of dim 600*2
@@ -124,54 +138,71 @@ class EnhBLSTM(nn.Module):
     # x: tensor of shape (batch, seq_length, 600*2)
 
     x = self.lin(x)
-    # x: tensor of shape (batch, seq_length, 514)
+    # x: tensor of shape (batch, seq_length, feat_dim*num_spk)
 
     x = F.sigmoid(x)
-    # x: tensor of shape (batch, seq_length, 514)
+    # x: tensor of shape (batch, seq_length, feat_dim*num_spk)
 
     return x
+
+def compute_cv_loss(model, batch_sample, plotdir=""):
+  if plotdir:
+    loss, norm = compute_loss(model, batch_sample, plotdir)
+  else:
+    loss, norm = compute_loss(model, batch_sample)
+  return loss, norm
 
 # define training pass
 def compute_loss(model, batch_sample, plotdir=""):
   loss_function = nn.MSELoss(reduce=False)
 
   mix = batch_sample['mix'].cuda()
-  permute1 = batch_sample['permute1'].cuda()
-  permute2 = batch_sample['permute2'].cuda()
   batch = int(mix.batch_sizes[0])
+  sources = []
+  for i in range(model.num_spk):
+    source = batch_sample['source'+str(i+1)].cuda()
+    source, lens = pad_packed_sequence(source, batch_first=True)
+    # source: tensor of shape (batch, seq_length, feat_dim)
+    sources.append(source)
 
   model.zero_grad()
   model.hidden = model.init_hidden(batch)
 
+  loss = 0
+  norm = 0
+
   mask_out = model(mix)
-  # mask_out: tensor of shape (batch, seq_length, 514)
+  # mask_out: tensor of shape (batch, seq_length, feat_dim*2)
 
   mixes, lens = pad_packed_sequence(mix, batch_first=True)
-  # mixes: tensor of shape (batch, seq_length, 257
-  permutations1, lens = pad_packed_sequence(permute1, batch_first=True)
-  permutations2, lens = pad_packed_sequence(permute2, batch_first=True)
-  # permutations*: tensor of shape (batch, seq_length, 514)
   lengths = lens.float().cuda()
-  double_mix = torch.cat((mixes, mixes), dim=2)
-  # double_mix: tensor of shape (batch, seq_length, 514)
-  masked = mask_out * double_mix
-  # masked: tensor of shape (batch, seq_length, 514)
-  loss1 = torch.sum(loss_function(masked, permutations1).view(batch, -1), dim=1)
-  loss2 = torch.sum(loss_function(masked, permutations2).view(batch, -1), dim=1)
-  # loss_function(masked, permutations*).view(batch, -1): tensor of shape (batch, seq_length*514)
-  # loss*: tensor of shape (batch)
+  # mixes: tensor of shape (batch, seq_length, feat_dim)
+  stacked_mix = torch.cat([mixes for _ in range(model.num_spk)], dim=2)
+  # stacked_mix: tensor of shape (batch, seq_length, feat_dim*num_spk)
+  masked = mask_out * stacked_mix
+  # masked: tensor of shape (batch, seq_length, feat_dim*num_spk)
+
+  perms = list(itertools.permutations(range(model.num_spk)))
+#  losses = []
+#  for perm_i in range(len(perms)):
+#    out_perms = torch.cat([sources[i] for i in perms[perm_i]], dim=2)
+#    losses.append(torch.sum(loss_function(masked, out_perms).view(batch, -1), dim=1))
+#  losses = torch.stack(losses)
+  losses = torch.stack([torch.sum(loss_function(masked, permute).view(batch, -1), dim=1) for permute in [torch.cat([sources[i] for i in perm], dim=2) for perm in perms]])
+
+  min_losses, indices = torch.min(losses, 0)
+
+  loss += torch.sum(min_losses)/model.num_spk
+  norm += torch.sum(lengths)*model.feat_dim
 
   if plotdir:
     os.system("mkdir -p "+plotdir)
     plot.plot_spec(mixes[0].detach().cpu().numpy(), plotdir+'/Mixture.png')
     plot.plot_spec(masked[0].detach().cpu().numpy(), plotdir+'/Masked_Mixture.png')
-    if loss1[0] < loss2[0]:
-      plot.plot_spec(permutations1[0].detach().cpu().numpy(), plotdir+'/Chosen_Permutation.png')
-    else:
-      plot.plot_spec(permutations2[0].detach().cpu().numpy(), plotdir+'/Chosen_Permutation.png')
+    permutation = perms[indices[0]]
+    plot.plot_spec(torch.cat([sources[i][0] for i in permutation], dim=1).detach().cpu().numpy(), plotdir+'/Chosen_Permutation.png')
 
-  return torch.mean(torch.min(loss1, loss2)/lengths/514)
-  # elt-wise min along batch between loss for each permutation
+  return loss/norm, norm
 
 # define test pass
 def compute_masks(model, batch_sample, out_dir):
@@ -188,6 +219,6 @@ def compute_masks(model, batch_sample, out_dir):
   for i in range(len(name)):
     mask = mask_out[i].cpu().numpy().transpose()[:,0:lens[i]]
     file_dict = dict()
-    file_dict['s1'] = mask[0:257]
-    file_dict['s2'] = mask[257:514]
+    for src in range(model.num_spk):
+      file_dict['s'+str(src+1)] = mask[src*model.feat_dim:(src+1)*model.feat_dim]
     np.savez_compressed(out_dir+'/'+name[i], **file_dict)

@@ -47,24 +47,44 @@ class Collator():
     if not self.key:
       return default_collate(batch)
     else:
-      batch_out = []
       if "num_spk" in batch[0].keys():
         max_spk = max([int(d["num_spk"]) for d in batch])
+        batch_out = MultiSpkBatch(max_spk+1, len(batch))
         for num_spk in range(max_spk+1):
           inds = [i for i in range(len(batch)) if int(batch[i]["num_spk"]) == num_spk]
+          batch_out.sub_batch_lens.append(len(inds))
           if len(inds) > 0:
             batch_out.append(self.collate_sub_batch([batch[i] for i in inds]))
           else:
             batch_out.append({})
       else:
         max_spk = max([len(d.keys())-1 for d in batch])
+        batch_out = MultiSpkBatch(max_spk+1, len(batch))
         for num_spk in range(max_spk+1):
           inds = [i for i in range(len(batch)) if len(batch[i].keys())-1 == num_spk]
+          batch_out.sub_batch_lens.append(len(inds))
           if len(inds) > 0:
             batch_out.append(self.collate_sub_batch([batch[i] for i in inds]))
           else:
             batch_out.append({})
       return batch_out
+
+class MultiSpkBatch():
+
+  def __init__(self, max_spk, length):
+    self.sub_batches = list()
+    self.sub_batch_lens = list()
+    self.max_spk = max_spk
+    self.length = length
+
+  def __len__(self):
+    return self.length
+
+  def __getitem__(self, idx):
+    return self.sub_batches[idx]
+
+  def append(self, elem):
+    self.sub_batches.append(elem)
 
 # Define dataset
 class TrainSet(Dataset):
@@ -117,15 +137,23 @@ class TestSet(Dataset):
     return sample
 
 # define nnet
-class EnhBLSTM(nn.Module):
-  def __init__(self, gpuid):
-    super(EnhBLSTM, self).__init__()
+class SepDNN(nn.Module):
+  def __init__(self, gpuid, **kwargs):
+    super(SepDNN, self).__init__()
 
     self.gpuid = gpuid
 
-    self.blstm = nn.LSTM(514, 600, num_layers=2, bidirectional=True)
+    if 'feat_dim' in kwargs.keys():
+      self.feat_dim = int(kwargs['feat_dim'])
+    else:
+      self.feat_dim = 257
 
-    self.lin = nn.Linear(600*2, 257)
+    for key in kwargs.keys():
+      print('modelparam:', key, kwargs[key])
+
+    self.blstm = nn.LSTM(self.feat_dim*2, 600, num_layers=2, bidirectional=True)
+
+    self.lin = nn.Linear(600*2, self.feat_dim)
 
     self.bn = nn.BatchNorm1d(600*2)
 
@@ -138,7 +166,7 @@ class EnhBLSTM(nn.Module):
               torch.randn(2*2, batch_size, 600))
 
   def forward(self, x):
-    # x: packed sequence of dim 514
+    # x: packed sequence of dim feat_dim*2
 
     x, self.hidden = self.blstm(x, self.hidden)
     # x: packed sequence of dim 600*2
@@ -150,12 +178,19 @@ class EnhBLSTM(nn.Module):
     # x: tensor of shape (batch, seq_length, 600*2)
 
     x = self.lin(x)
-    # x: tensor of shape (batch, seq_length, 257)
+    # x: tensor of shape (batch, seq_length, feat_dim)
 
     x = F.sigmoid(x)
-    # x: tensor of shape (batch, seq_length, 257)
+    # x: tensor of shape (batch, seq_length, feat_dim)
 
     return x
+
+def compute_cv_loss(model, batch_sample, plotdir=""):
+  if plotdir:
+    loss, norm = compute_loss(model, batch_sample, plotdir)
+  else:
+    loss, norm = compute_loss(model, batch_sample)
+  return loss, norm
 
 # define training pass
 def compute_loss(model, batch_sample, plotdir=""):
@@ -163,11 +198,12 @@ def compute_loss(model, batch_sample, plotdir=""):
 
   model.zero_grad()
   loss = 0
+  norm = 0
 
-  for num_spk in range(len(batch_sample)):
-    if len(batch_sample[num_spk]) > 0:
+  for num_spk in range(batch_sample.max_spk):
+    if batch_sample.sub_batch_lens[num_spk] > 0:
+      batch = batch_sample.sub_batch_lens[num_spk]
       combo = batch_sample[num_spk]['combo'].cuda()
-      batch = int(combo.batch_sizes[0])
 
       model.hidden = model.init_hidden(batch)
 
@@ -175,21 +211,22 @@ def compute_loss(model, batch_sample, plotdir=""):
       for i in range(num_spk):
         source = batch_sample[num_spk]['source'+str(i+1)].cuda()
         source, lens = pad_packed_sequence(source, batch_first=True)
-        # source: tensor of shape (batch, seq_length, 257)
+        # source: tensor of shape (batch, seq_length, feat_dim)
         sources.append(source)
       source_usage = [[] for _ in range(num_spk)]
       for dnn_pass in range(num_spk):
         mask_out = model(combo)
-        # mask_out: tensor of shape (batch, seq_length, 257)
+        # mask_out: tensor of shape (batch, seq_length, feat_dim)
 
         combos, lens = pad_packed_sequence(combo, batch_first=True)
-        # combos: tensor of shape (batch, seq_length, 514)
-        mixes = torch.index_select(combos, 2, torch.LongTensor(range(257)).cuda())
-        # mixes: tensor of shape (batch, seq_length, 257)
+        # combos: tensor of shape (batch, seq_length, feat_dim*2)
+        mixes = torch.index_select(combos, 2, torch.LongTensor(range(model.feat_dim)).cuda())
+        # mixes: tensor of shape (batch, seq_length, feat_dim)
         lengths = lens.float().cuda()
 
         masked = mask_out * mixes
         losses = torch.stack([torch.sum(loss_function(masked, source).view(batch, -1), dim=1) for source in sources])
+        # losses: tensor of shape (num_spk, batch)
 
         for source_ind in range(num_spk):
           for index in source_usage[source_ind]:
@@ -199,15 +236,16 @@ def compute_loss(model, batch_sample, plotdir=""):
         for sample_ind in range(batch):
           source_usage[indices[sample_ind]].append(sample_ind)
 
-        loss += torch.mean(min_losses/lengths/257/batch)
+        loss += torch.sum(min_losses)/num_spk
+        norm += torch.sum(lengths)*model.feat_dim
 
         if plotdir:
           os.system("mkdir -p "+plotdir)
           if dnn_pass == 0:
-            plot.plot_spec(combos[0].detach().cpu().numpy()[:,0:257], plotdir+'/'+str(num_spk)+'-Spk_Mix.png')
+            plot.plot_spec(combos[0].detach().cpu().numpy()[:,0:model.feat_dim], plotdir+'/'+str(num_spk)+'-Spk_Mix.png')
           prefix = plotdir+'/'+str(num_spk)+'-Spk_Pass-'+str(dnn_pass+1)+'_'
           plot.plot_spec(combos[0].detach().cpu().numpy(), prefix+'Input.png')
-          plot.plot_spec(combos[0].detach().cpu().numpy()[:,258:514], prefix+'Attenmask.png')
+          plot.plot_spec(combos[0].detach().cpu().numpy()[:,model.feat_dim+1:model.feat_dim*2], prefix+'Attenmask.png')
           plot.plot_spec(mask_out[0].detach().cpu().numpy(), prefix+'Mask_Out.png')
           plot.plot_spec(masked[0].detach().cpu().numpy(), prefix+'Masked_Mix.png')
           plot.plot_spec(sources[indices[0]][0].detach().cpu().numpy(), prefix+'Chosen_Source.png')
@@ -217,17 +255,17 @@ def compute_loss(model, batch_sample, plotdir=""):
         combos = F.relu_(combos - residual_comp)
         combo = pack_padded_sequence(combos, lens, batch_first=True)
 
-  return loss
+  return loss/norm, norm
 
 # define test pass
 def compute_masks(model, batch_sample, out_dir):
   model.zero_grad()
 
-  for num_spk in range(len(batch_sample)):
-    if len(batch_sample[num_spk]) > 0:
+  for num_spk in range(batch_sample.max_spk):
+    if batch_sample.sub_batch_lens[num_spk] > 0:
+      batch = batch_sample.sub_batch_lens[num_spk]
       combo = batch_sample[num_spk]['combo'].cuda()
       name = batch_sample[num_spk]['name']
-      batch = int(combo.batch_sizes[0])
 
       model.hidden = model.init_hidden(batch)
 
@@ -241,7 +279,7 @@ def compute_masks(model, batch_sample, out_dir):
         combos = combos - residual_comp
         combo = pack_padded_sequence(combos, lens, batch_first=True)
 
-        for i in range(len(name)):
+        for i in range(batch):
           dicts[i]['s'+str(dnn_pass+1)] = mask_out[i].cpu().numpy().transpose()[:,0:lens[i]]
 
       for i in range(batch):

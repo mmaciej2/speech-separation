@@ -2,7 +2,7 @@
 #$ -cwd
 #$ -S /bin/bash
 #$ -m eas
-#$ -l gpu=1,hostname=(b1*|c0*)&!b10*&!c06*&!c09*,ram_free=8G,mem_free=8G
+#$ -l gpu=1
 #$ -r no
 set -e
 device=`free-gpu`
@@ -17,6 +17,7 @@ if [ $# -le 3 ]; then
   echo "$0 <arch> <dir_out> <train_datadir> [opts]"
   echo "optional arguments:"
   echo "  --cv-datadir"
+  echo "  --model-config"
   echo "  --copy-data-to-gpu  <true>"
   echo "  --start-epoch       <0>"
   echo "  --num-epochs        <200>"
@@ -75,6 +76,7 @@ done
 
 python3 steps/train_qsub.py $arch $device $train_datadir $dirout \
                             --cv-data-dir "$cv_datadir" \
+                            --model-config "$model_config" \
                             --train-copy-location "$datadir" \
                             --start-epoch $start_epoch \
                             --num-epochs $num_epochs \

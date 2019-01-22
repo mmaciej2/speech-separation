@@ -33,6 +33,9 @@ def get_args():
   parser.add_argument("--train-copy-location", type=str,
                       help="Copy training data here for I/O purposes",
                       default="")
+  parser.add_argument("--model-config", type=str,
+                      help="Config file for DNN",
+                      default="")
   parser.add_argument("--batch-size", type=int,
                       help="Batch size",
                       default=100)
@@ -75,15 +78,19 @@ def main():
 
   print("loading datset")
   dataset = m.TrainSet(args.data_dir, args.train_copy_location)
-  train_size = len(dataset)
   dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator, num_workers=1)
   if args.cv_data_dir:
     cv_dataset = m.TrainSet(args.cv_data_dir)
-    cv_size = len(cv_dataset)
     cv_dataloader = DataLoader(cv_dataset, batch_size=args.batch_size, collate_fn=cv_dataset.collator)
 
   print("initializing model")
-  model = m.EnhBLSTM(args.gpu_id)
+  if args.model_config:
+    kwargs = dict()
+    for line in open(args.model_config):
+      kwargs[line.split('=')[0]] = line.rstrip().split('=')[1]
+    model = m.SepDNN(args.gpu_id, **kwargs)
+  else:
+    model = m.SepDNN(args.gpu_id)
   model.cuda()
   optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
   print("using lr="+str(args.learning_rate))
@@ -105,33 +112,37 @@ def main():
   print("training")
   for epoch in range(args.start_epoch, args.num_epochs):
     epoch_loss = 0.0
+    epoch_norm = 0
     for i_batch, sample_batch in enumerate(dataloader):
-      batch_dim = len(sample_batch)
-      loss = m.compute_loss(model, sample_batch)/batch_dim
-      epoch_loss += loss*batch_dim
+      loss, norm = m.compute_loss(model, sample_batch)
+      epoch_loss += loss.detach().cpu().numpy() * norm.detach().cpu().numpy()
+      epoch_norm += norm.detach().cpu().numpy()
       loss.backward()
       torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
       optimizer.step()
 
     if args.cv_data_dir and epoch % 5 == 4:
-      cv_loss = 0.0
+      cv_epoch_loss = 0.0
+      cv_epoch_norm = 0
       with torch.no_grad():
         for i_batch_cv, sample_batch_cv in enumerate(cv_dataloader):
           if i_batch_cv == 0:
-            cv_loss += m.compute_loss(model, sample_batch_cv, plot_dir+'epoch'+str(epoch+1).zfill(3))
+            cv_loss, cv_norm = m.compute_cv_loss(model, sample_batch_cv, plot_dir+'epoch'+str(epoch+1).zfill(3))
           else:
-            cv_loss += m.compute_loss(model, sample_batch_cv)
-      print("For epoch: "+str(epoch+1).zfill(3)+" cv set loss is: "+str(cv_loss.detach().cpu().numpy()/cv_size))
-      cv_lossF.write(str(epoch+1).zfill(3)+' '+str(cv_loss.detach().cpu().numpy()/cv_size)+'\n')
+            cv_loss, cv_norm = m.compute_cv_loss(model, sample_batch_cv)
+          cv_epoch_loss += cv_loss.detach().cpu().numpy() * cv_norm.detach().cpu().numpy()
+          cv_epoch_norm += cv_norm.detach().cpu().numpy()
+      print("For epoch: "+str(epoch+1).zfill(3)+" cv set loss is: "+str(cv_epoch_loss/cv_epoch_norm))
+      cv_lossF.write(str(epoch+1).zfill(3)+' '+str(cv_epoch_loss/cv_epoch_norm)+'\n')
       cv_lossF.flush()
       epoch_cv_losses[0].append(epoch+1)
-      epoch_cv_losses[1].append(cv_loss.detach().cpu().numpy()/cv_size)
+      epoch_cv_losses[1].append(cv_epoch_loss/cv_epoch_norm)
 
-    print("For epoch: "+str(epoch+1).zfill(3)+" loss is: "+str(epoch_loss.detach().cpu().numpy()/train_size))
-    lossF.write(str(epoch+1).zfill(3)+' '+str(epoch_loss.detach().cpu().numpy()/train_size)+'\n')
+    print("For epoch: "+str(epoch+1).zfill(3)+" loss is: "+str(epoch_loss/epoch_norm))
+    lossF.write(str(epoch+1).zfill(3)+' '+str(epoch_loss/epoch_norm)+'\n')
     lossF.flush()
     epoch_losses[0].append(epoch+1)
-    epoch_losses[1].append(epoch_loss.detach().cpu().numpy()/train_size)
+    epoch_losses[1].append(epoch_loss/epoch_norm)
     if epoch % 5 == 4:
       print("Saving model for epoch "+str(epoch+1).zfill(3))
       torch.save(model.state_dict(), int_model_dir+str(epoch+1).zfill(3)+'.mdl')

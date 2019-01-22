@@ -1,12 +1,14 @@
 #!/bin/bash
 
 set -e
+. ./cmd.sh
 
 stage=0
 
 arch=uPIT
 model_dir=exp/uPIT_mixer6_CH02_tr
 test_sets="mixer6_CH02_tt mixer6_CH09_tt"
+model_config= # optional config file for model
 email= # set this if you would like qsub email
 
 featdir=`pwd`/feats
@@ -53,12 +55,13 @@ if [ $stage -le 2 ]; then
     mkdir -p $model_dir/output_$model/$test_set/masks
   done
 
-  qsub -sync y -j y -o $model_dir/output_$model/eval_\$JOB_ID.log $email_opt \
+  qsub -sync y -j y -o $model_dir/output_$model/eval_\$JOB_ID.log $email_opt $eval_cmd \
     steps/qsub_eval.sh \
     $arch \
     $model_dir \
     $test_data_dirs \
     --intermediate-model-num "$intermediate_model_num" \
+    --model-config "$model_config" \
     --batch-size $batch_size
 fi
 
