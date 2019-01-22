@@ -54,6 +54,7 @@ if [ $stage -le 2 ]; then
   exp_dir=exp/${arch}_${train_set}
   mkdir -p $exp_dir
   cp archs/${arch}.py $exp_dir/arch.py
+  [ -z "$model_config" ] || cp $model_config $exp_dir/conf
 
   qsub -j y -o $exp_dir/train_\$JOB_ID.log $opt $train_cmd \
     steps/qsub_train.sh \

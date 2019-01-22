@@ -8,7 +8,6 @@ stage=0
 arch=uPIT
 model_dir=exp/uPIT_mixer6_CH02_tr
 test_sets="mixer6_CH02_tt mixer6_CH09_tt"
-model_config= # optional config file for model
 email= # set this if you would like qsub email
 
 featdir=`pwd`/feats
@@ -23,6 +22,7 @@ if [ -z "$intermediate_model_num" ]; then
 else
   model=$intermediate_model_num
 fi
+[ ! -f "$model_dir/conf ] || model_config="$model_dir/conf"
 [ -z "$email" ] || email_opt="-M $email"
 
 
