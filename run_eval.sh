@@ -22,7 +22,7 @@ if [ -z "$intermediate_model_num" ]; then
 else
   model=$intermediate_model_num
 fi
-[ ! -f "$model_dir/conf ] || model_config="$model_dir/conf"
+[ ! -f "$model_dir/conf" ] || model_config="$model_dir/conf"
 [ -z "$email" ] || email_opt="-M $email"
 
 
