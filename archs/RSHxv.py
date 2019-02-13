@@ -112,11 +112,9 @@ class TrainSet(Dataset):
 
     filelist = datadir+"/feats_train.scp"
     if location:
-      with open(filelist) as F:
-        indir = os.path.dirname(F.readline().rstrip().split(' ')[1])+'/'
-      print("rsync -r --bwlimit=10000 "+indir+" "+location)
-      os.system("rsync -r --bwlimit=10000 "+indir+" "+location)
-      self.list = [location+'/'+line.split(' ')[0]+'.npz' for line in open(filelist)]
+      print("tools/copy_scp_data_to_dir.sh "+filelist+" "+location+" --bwlimit 10000")
+      os.system("tools/copy_scp_data_to_dir.sh "+filelist+" "+location+" --bwlimit 10000")
+      self.list = [location+'/'+line.rstrip('\n').split(' ')[1] for line in open(filelist)]
     else:
       self.list = [line.rstrip('\n').split(' ')[1] for line in open(filelist)]
     self.collator = Collator('combo')
