@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
-import torch
 import argparse
 import sys
+import os
 import numpy as np
 
-from torch.utils.data import DataLoader
+sys.path.append('tools')
+import plot
 
-sys.path.append('archs')
+import torch
+from torch.utils.data import DataLoader
 
 def get_args():
   parser = argparse.ArgumentParser(
@@ -38,10 +40,11 @@ def main():
   args = get_args()
   global m
   print("Using "+args.arch_file+" DNN architecture")
-  m = __import__(args.arch_file)
+  sys.path.append(os.path.dirname(args.arch_file))
+  m = __import__(os.path.splitext(os.path.basename(args.arch_file))[0])
 
   print("Using GPU", args.gpu_id)
-  torch.cuda.set_device(args.gpu_id)
+  torch.cuda.set_device(0)
   tmp = torch.ByteTensor([0])
   tmp.cuda()
 
@@ -63,6 +66,7 @@ def main():
   model.cuda()
   model.load_state_dict(torch.load(args.model, map_location=lambda storage, loc: storage.cuda()))
 
+  model.eval()
   with torch.no_grad():
     for i_batch, sample_batch in enumerate(dataloader):
       m.compute_masks(model, sample_batch, args.dirout)

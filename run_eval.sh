@@ -57,7 +57,6 @@ if [ $stage -le 2 ]; then
 
   qsub -sync y -j y -o $model_dir/output_$model/eval_\$JOB_ID.log $email_opt $eval_cmd \
     steps/qsub_eval.sh \
-    $arch \
     $model_dir \
     $test_data_dirs \
     --intermediate-model-num "$intermediate_model_num" \
