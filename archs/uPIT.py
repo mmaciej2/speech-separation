@@ -53,11 +53,9 @@ class TrainSet(Dataset):
   def __init__(self, datadir, location=""):
     filelist = datadir+"/feats_train.scp"
     if location:
-      with open(filelist) as F:
-        indir = os.path.dirname(F.readline().rstrip().split(' ')[1])+'/'
-      print("rsync -r --bwlimit=10000 "+indir+" "+location)
-      os.system("rsync -r --bwlimit=10000 "+indir+" "+location)
-      self.list = [location+'/'+line.split(' ')[0]+'.npz' for line in open(filelist)]
+      print("tools/copy_scp_data_to_dir.sh "+filelist+" "+location+" --bwlimit 10000")
+      os.system("tools/copy_scp_data_to_dir.sh "+filelist+" "+location+" --bwlimit 10000")
+      self.list = [location+'/'+line.rstrip('\n').split(' ')[1] for line in open(filelist)]
     else:
       self.list = [line.rstrip('\n').split(' ')[1] for line in open(filelist)]
     self.collator = Collator('mix')
@@ -145,15 +143,15 @@ class SepDNN(nn.Module):
 
     return x
 
-def compute_cv_loss(model, batch_sample, plotdir=""):
+def compute_cv_loss(model, epoch, batch_sample, plotdir=""):
   if plotdir:
-    loss, norm = compute_loss(model, batch_sample, plotdir)
+    loss, norm = compute_loss(model, epoch, batch_sample, plotdir)
   else:
-    loss, norm = compute_loss(model, batch_sample)
+    loss, norm = compute_loss(model, epoch, batch_sample)
   return loss, norm
 
 # define training pass
-def compute_loss(model, batch_sample, plotdir=""):
+def compute_loss(model, epoch, batch_sample, plotdir=""):
   loss_function = nn.MSELoss(reduce=False)
 
   mix = batch_sample['mix'].cuda()

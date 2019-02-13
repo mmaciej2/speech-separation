@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
-import torch
 import argparse
 import sys
 import os
 import numpy as np
 
+sys.path.append('tools')
+import plot
+
+import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
 
 sys.path.append('archs')
-
-sys.path.append('tools')
-import plot
 
 def get_args():
   parser = argparse.ArgumentParser(
@@ -114,7 +114,7 @@ def main():
     epoch_loss = 0.0
     epoch_norm = 0
     for i_batch, sample_batch in enumerate(dataloader):
-      loss, norm = m.compute_loss(model, sample_batch)
+      loss, norm = m.compute_loss(model, epoch, sample_batch)
       epoch_loss += loss.detach().cpu().numpy() * norm.detach().cpu().numpy()
       epoch_norm += norm.detach().cpu().numpy()
       loss.backward()
@@ -124,14 +124,16 @@ def main():
     if args.cv_data_dir and epoch % 5 == 4:
       cv_epoch_loss = 0.0
       cv_epoch_norm = 0
+      model.eval()
       with torch.no_grad():
         for i_batch_cv, sample_batch_cv in enumerate(cv_dataloader):
           if i_batch_cv == 0:
-            cv_loss, cv_norm = m.compute_cv_loss(model, sample_batch_cv, plot_dir+'epoch'+str(epoch+1).zfill(3))
+            cv_loss, cv_norm = m.compute_cv_loss(model, epoch, sample_batch_cv, plot_dir+'epoch'+str(epoch+1).zfill(3))
           else:
-            cv_loss, cv_norm = m.compute_cv_loss(model, sample_batch_cv)
+            cv_loss, cv_norm = m.compute_cv_loss(model, epoch, sample_batch_cv)
           cv_epoch_loss += cv_loss.detach().cpu().numpy() * cv_norm.detach().cpu().numpy()
           cv_epoch_norm += cv_norm.detach().cpu().numpy()
+      model.train()
       print("For epoch: "+str(epoch+1).zfill(3)+" cv set loss is: "+str(cv_epoch_loss/cv_epoch_norm))
       cv_lossF.write(str(epoch+1).zfill(3)+' '+str(cv_epoch_loss/cv_epoch_norm)+'\n')
       cv_lossF.flush()

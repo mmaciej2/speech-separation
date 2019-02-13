@@ -8,9 +8,9 @@ set -e
 device=`free-gpu`
 
 
-if [ $# -le 3 ]; then
+if [ $# -le 2 ]; then
   echo "Usage:"
-  echo "$0 <arch> <model_dir> <test_data_dir1> [<test_data_dir2> ...] [opts]"
+  echo "$0 <model_dir> <test_data_dir1> [<test_data_dir2> ...] [opts]"
   echo "optional arguments:"
   echo "  --model-config"
   echo "  --batch-size             <100>"
@@ -18,14 +18,12 @@ if [ $# -le 3 ]; then
   exit 1;
 fi
 
-arch=$1
-model_dir=$2
+model_dir=$1
 test_data_dirs=""
-shift 2
+shift 1
 batch_size=100
 
 echo "args:"
-echo "  arch: $arch"
 echo "  model_dir: $model_dir"
 
 # Parse remaining arguments
@@ -59,7 +57,7 @@ echo "Working on machine $HOSTNAME"
 
 for data_dir in $test_data_dirs; do
   dir_out=$base_dir_out/$(basename $data_dir)/masks
-  python3 steps/eval_qsub.py $arch $device $model $data_dir $dir_out \
+  python3 steps/eval_qsub.py $model_dir/arch.py $device $model $data_dir $dir_out \
                              --model-config "$model_config" \
                              --batch-size $batch_size \
                              --model-config "$model_config"
