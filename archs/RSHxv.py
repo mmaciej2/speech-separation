@@ -130,9 +130,12 @@ class TrainSet(Dataset):
 
     sample = {'combo': combo, 'num_spk': self.num_spks[idx], 'spk_ids': self.src_ids[idx]}
 
-    for src in range(len(feat.files)-1):
-      source_mag_spec = feat['s'+str(src+1)].transpose()
-      sample["source"+str(src+1)] = source_mag_spec
+    if len(feat.files) == 1:
+      sample["source1"] = mix_mag_spec
+    else:
+      for src in range(len(feat.files)-1):
+        source_mag_spec = feat['s'+str(src+1)].transpose()
+        sample["source"+str(src+1)] = source_mag_spec
 
     return sample
 
