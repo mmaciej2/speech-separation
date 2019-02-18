@@ -5,12 +5,14 @@
 #$ -l gpu=1
 #$ -r no
 set -e
-device=`free-gpu`
+source activate mm
+module load cuda90/toolkit cuda90/blas cudnn
+device=$CUDA_VISIBLE_DEVICES
 
 
 # This is root directory for copying data onto the local machine that
 #   the GPU job is running on
-gpu_data_dir=/export/${HOSTNAME}/mmaciej2
+gpu_data_dir=$TMPDIR
 
 if [ $# -le 3 ]; then
   echo "Usage:"

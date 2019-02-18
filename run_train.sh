@@ -5,17 +5,18 @@ set -e
 
 stage=0
 
-arch=uPIT
-train_set=mixer6_CH02_tr
+arch=RSHxv
+train_set=mixer6_CH02_1-2spk_tr_40k
 cv_set=mixer6_CH02_cv
-model_config= # optional config file for model
+model_config=conf/RSHxv.conf # optional config file for model
 email= # set this if you would like qsub email and to run the train command in the background
 
-featdir=`pwd`/feats
+featdir=/expscratch/mmaciejewski/enh_sep_feats/speech-separation
+suffix=_l$(grep lambda $model_config | awk -F'=' '{print $NF}')
 copy_data_to_gpu=true
 start_epoch=0
 num_epochs=200
-batch_size=100
+batch_size=80
 
 
 train_data_dir=data/$train_set
@@ -25,6 +26,8 @@ if [ -z "$email" ]; then
 else
   opt="-M $email"
 fi
+
+source activate mm
 
 
 # Data prep
@@ -43,7 +46,7 @@ if [ $stage -le 1 ]; then
   echo "### Extracting features (stage 1) ###"
 
   for data_dir in $train_data_dir $cv_data_dir; do
-    steps/extract_feats.py $data_dir "train" $featdir/$(basename $data_dir)_train
+    $run_cmd steps/extract_feats.py $data_dir "train" $featdir/$(basename $data_dir)_train
   done
 fi
 
@@ -51,7 +54,7 @@ fi
 if [ $stage -le 2 ]; then
   echo "### Training model (stage 2) ###"
 
-  exp_dir=exp/${arch}_${train_set}
+  exp_dir=exp/${arch}_${train_set}${suffix}
   mkdir -p $exp_dir
   cp archs/${arch}.py $exp_dir/arch.py
   [ -z "$model_config" ] || cp $model_config $exp_dir/conf

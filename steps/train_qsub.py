@@ -66,7 +66,7 @@ def main():
   m = __import__(args.arch_file)
 
   print("Using GPU", args.gpu_id)
-  torch.cuda.set_device(args.gpu_id)
+  torch.cuda.set_device(0)
   tmp = torch.ByteTensor([0])
   tmp.cuda()
 

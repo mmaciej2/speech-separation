@@ -5,7 +5,9 @@
 #$ -l gpu=1
 #$ -r no
 set -e
-device=`free-gpu`
+source activate mm
+module load cuda90/toolkit cuda90/blas cudnn
+device=$CUDA_VISIBLE_DEVICES
 
 
 if [ $# -le 2 ]; then

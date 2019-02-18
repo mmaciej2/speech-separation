@@ -5,12 +5,12 @@ set -e
 
 stage=0
 
-arch=uPIT
-model_dir=exp/uPIT_mixer6_CH02_tr
-test_sets="mixer6_CH02_tt mixer6_CH09_tt"
+arch=RSHxv
+model_dir=exp/RSHxv_mixer6_CH02_1-2spk_tr_40k_l0.05
+test_sets="mixer6_CH02_tt"
 email= # set this if you would like qsub email
 
-featdir=`pwd`/feats
+featdir=/expscratch/mmaciejewski/enh_sep_feats/speech-separation
 batch_size=100
 intermediate_model_num=  # set this to the intermediate model to use it over final
 
@@ -24,6 +24,8 @@ else
 fi
 [ ! -f "$model_dir/conf" ] || model_config="$model_dir/conf"
 [ -z "$email" ] || email_opt="-M $email"
+
+source activate mm
 
 
 # Data prep
@@ -42,7 +44,7 @@ if [ $stage -le 1 ]; then
   echo "### Extracting features (stage 1) ###"
 
   for test_set in $test_sets; do
-    steps/extract_feats.py data/$test_set "test" $featdir/${test_set}_test
+    $run_cmd steps/extract_feats.py data/$test_set "test" $featdir/${test_set}_test
   done
 fi
 
@@ -75,7 +77,7 @@ if [ $stage -le 3 ]; then
       mkdir -p $exp_dir/wav/s$i
     done
 
-    steps/reconstruct_sources.py data/$test_set $exp_dir
+    $run_cmd steps/reconstruct_sources.py data/$test_set $exp_dir
   done
 fi
 
@@ -87,7 +89,7 @@ if [ $stage -le 4 ]; then
     exp_dir=$model_dir/output_$model/$test_set
     mkdir -p $exp_dir/results
 
-    steps/evaluate_sources.py data/$test_set $exp_dir
+    $run_cmd steps/evaluate_sources.py data/$test_set $exp_dir
 
     head -n 1 $exp_dir/results/SDR_stats.txt |\
       awk -v dset=$test_set '{printf("%s mean SDR: %0.2f\n", dset, $2)}'
