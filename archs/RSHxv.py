@@ -154,6 +154,24 @@ class TestSet(Dataset):
     sample = {'combo': combo, 'name': os.path.basename(self.list[idx]), 'num_spk': self.num_spks[idx]}
     return sample
 
+class EmbSet(Dataset):
+
+  def __init__(self, datadir):
+    self.list = [line.rstrip('\n').split(' ')[1] for line in open(datadir+"/feats.scp")]
+    self.num_spks = [int(line.rstrip('\n').split(' ')[1]) for line in open(datadir+"/utt2num_spk")]
+    self.collator = Collator('combo')
+
+  def __len__(self):
+    return len(self.list)
+
+  def __getitem__(self, idx):
+    mix_mag_spec = np.load(self.list[idx])['mix'].transpose()
+    atten_mask = np.ones(mix_mag_spec.shape)
+    combo = np.concatenate((mix_mag_spec, atten_mask), axis=1)
+
+    sample = {'combo': combo, 'utt_id': os.path.splitext(os.path.basename(self.list[idx]))[0], 'num_spk': self.num_spks[idx]}
+    return sample
+
 # define nnet
 class SepDNN(nn.Module):
   def __init__(self, gpuid, **kwargs):
@@ -168,10 +186,10 @@ class SepDNN(nn.Module):
     else:
       self.feat_dim = 257
 
-    if 'alpha' in kwargs.keys():
-      self.alpha = float(kwargs['alpha'])
+    if 'lambda' in kwargs.keys():
+      self.l = float(kwargs['lambda'])
     else:
-      self.alpha = 1.0
+      self.l = 0.5
 
     for key in kwargs.keys():
       print('modelparam:', key, kwargs[key])
@@ -231,17 +249,22 @@ class SepDNN(nn.Module):
   def forward_embedding(self, x, layer_id): # x: packed seq dim feat_dim*2
     x, self.hidden = self.blstm(x, self.hidden) # x: packed seq dim 600*2
     x, lens = pad_packed_sequence(x, batch_first=True) # x: (batch, seq_len, 600*2)
-    x = self.bn(x.permute(0,2,1).contiguous()).permute(0,2,1) # x: (batch, seq_len, 600*2)
-    x = torch.cat((torch.mean(x, 1), torch.std(x, 1)), dim=1) # x: (batch, 600*2*2)
-    x = self.xv_lin1(x) # x: (batch, 512)
+    x = self.bn1(x.permute(0,2,1).contiguous()).permute(0,2,1) # x: (batch, seq_len, 600*2)
+
+    x = torch.cat((torch.mean(x, 1),
+                   torch.sqrt(torch.mean(torch.pow(x - torch.mean(x,1).unsqueeze(1).expand(x.shape), 2), 1)+eps)),
+                  dim=1) # y: (batch, 600*2*2)
+    x = self.xv_lin1(x) # y: (batch, 512)a
     if layer_id == 0:
-     return x # (batch, 512)
-    else:
-      return self.xv_lin2(x) # (batch, 200)
-    
+      return x
+    x = self.bn2(x)
+    x = self.xv_lin2(x) # y: (batch, 200)
+    if layer_id == 1:
+      return x
+
 
 # define training pass
-def compute_loss(model, batch_sample, plotdir=""):
+def compute_loss(model, epoch, batch_sample, plotdir=""):
   sep_loss_fn = nn.MSELoss(reduce=False)
   sid_loss_fn = nn.CrossEntropyLoss(reduce=True)
 
@@ -310,12 +333,12 @@ def compute_loss(model, batch_sample, plotdir=""):
         combos = F.relu_(combos - residual_comp)
         combo = pack_padded_sequence(combos, lens, batch_first=True)
 
-  print("sep_loss:", (sep_loss/norm).detach().cpu().numpy(), "sid_loss:", sid_loss.detach().cpu().numpy(), "alpha:", model.alpha)
-  loss = sep_loss/norm + model.alpha*sid_loss, norm
+  print("sep_loss:", (sep_loss/norm).detach().cpu().numpy(), "sid_loss:", sid_loss.detach().cpu().numpy(), "lambda:", model.l)
+  loss = (1-model.l)*(sep_loss/norm) + model.l*sid_loss, norm
   return loss
 
 # define cv loss computation
-def compute_cv_loss(model, batch_sample, plotdir=""):
+def compute_cv_loss(model, epoch, batch_sample, plotdir=""):
   sep_loss_fn = nn.MSELoss(reduce=False)
 
   model.zero_grad()
@@ -406,3 +429,21 @@ def compute_masks(model, batch_sample, out_dir):
 
       for i in range(batch):
         np.savez_compressed(out_dir+'/'+name[i], **(dicts[i]))
+
+# Extract speaker embedding
+def extract_embeddings(model, batch_sample, batch_ind, out_dir):
+  model.zero_grad()
+
+  for num_spk in range(batch_sample.max_spk):
+    if len(batch_sample[num_spk]) > 0:
+      combo = batch_sample[num_spk]['combo'].cuda()
+      utt_id = batch_sample[num_spk]['utt_id']
+      batch = int(combo.batch_sizes[0])
+
+      model.hidden = model.init_hidden(batch)
+
+      embeddings = model.forward_embedding(combo, 1)
+      batch_out = {}
+      for i in range(len(utt_id)):
+        batch_out[utt_id[i]] = embeddings[i].cpu().numpy()
+      np.savez_compressed(out_dir+"/batch"+str(batch_ind), **batch_out)
