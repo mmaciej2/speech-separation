@@ -43,7 +43,7 @@ if [ $stage -le 1 ]; then
   echo "### Extracting features (stage 1) ###"
 
   for data_dir in $train_data_dir $cv_data_dir; do
-    steps/extract_feats.py $data_dir "train" $featdir/$(basename $data_dir)_train
+    steps/extract_feats.sh $data_dir "train" $featdir/$(basename $data_dir)_train
   done
 fi
 

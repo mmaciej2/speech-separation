@@ -42,7 +42,7 @@ if [ $stage -le 1 ]; then
   echo "### Extracting features (stage 1) ###"
 
   for test_set in $test_sets; do
-    steps/extract_feats.py data/$test_set "test" $featdir/${test_set}_test
+    steps/extract_feats.sh data/$test_set "test" $featdir/${test_set}_test
   done
 fi
 
