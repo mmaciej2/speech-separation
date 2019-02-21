@@ -12,7 +12,7 @@ device=`free-gpu`
 #   the GPU job is running on
 gpu_data_dir=/export/${HOSTNAME}/mmaciej2
 
-if [ $# -le 3 ]; then
+if [ $# -le 2 ]; then
   echo "Usage:"
   echo "$0 <arch> <dir_out> <train_datadir> [opts]"
   echo "optional arguments:"

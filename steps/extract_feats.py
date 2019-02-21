@@ -36,14 +36,19 @@ def get_args():
 def main():
   args = get_args()
 
-  os.system("mkdir -p "+args.feat_dir)
-  featF = open(args.data_dir+"/feats_"+args.data_type+".scp", 'w')
-  utt2num_spkF = open(args.data_dir+"/utt2num_spk", 'w')
+  if "SGE_TASK_ID" in os.environ.keys():
+    job_suffix = '.'+os.environ["SGE_TASK_ID"]
+  else:
+    job_suffix = ''
 
-  if os.path.isfile(args.data_dir+"/segments"):
+  os.system("mkdir -p "+args.feat_dir)
+  featF = open(args.data_dir+"/feats_"+args.data_type+".scp"+job_suffix, 'w')
+  utt2num_spkF = open(args.data_dir+"/utt2num_spk"+job_suffix, 'w')
+
+  if os.path.isfile(args.data_dir+"/segments"+job_suffix):
     use_segs = True
     seg_dict = {}
-    for line in open(args.data_dir+"/segments"):
+    for line in open(args.data_dir+"/segments"+job_suffix):
       seg = line.rstrip().split()
       if seg[1] not in seg_dict.keys():
         seg_dict[seg[1]] = []
@@ -51,11 +56,13 @@ def main():
   else:
     use_segs = False
 
-  with open(args.data_dir+"/wav.scp", 'r') as listF:
+  with open(args.data_dir+"/wav.scp"+job_suffix, 'r') as listF:
     for line in listF:
       reco_id, filename = line.rstrip().split(' ')
       wav_files = sorted(glob.glob(filename.replace("/mix/","/*/")))
       num_spk = len(wav_files)-1
+      if num_spk == 0:
+        num_spk = 1
       if args.data_type == "train":
         if use_segs:
           for seg in seg_dict[reco_id]:
