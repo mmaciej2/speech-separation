@@ -10,7 +10,7 @@ module load cuda90/toolkit cuda90/blas cudnn
 device=$CUDA_VISIBLE_DEVICES
 
 
-if [ $# -le 2 ]; then
+if [ $# -le 1 ]; then
   echo "Usage:"
   echo "$0 <model_dir> <test_data_dir1> [<test_data_dir2> ...] [opts]"
   echo "optional arguments:"

@@ -14,7 +14,7 @@ device=$CUDA_VISIBLE_DEVICES
 #   the GPU job is running on
 gpu_data_dir=$TMPDIR
 
-if [ $# -le 3 ]; then
+if [ $# -le 2 ]; then
   echo "Usage:"
   echo "$0 <arch> <dir_out> <train_datadir> [opts]"
   echo "optional arguments:"
