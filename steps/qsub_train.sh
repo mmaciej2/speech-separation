@@ -6,7 +6,7 @@
 #$ -r no
 set -e
 source activate mm
-module load cuda90/toolkit cuda90/blas cudnn
+module load cuda10.0/toolkit cuda10.0/blas cudnn
 device=$CUDA_VISIBLE_DEVICES
 
 
