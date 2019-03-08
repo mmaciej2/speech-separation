@@ -8,6 +8,9 @@ if [ $# -le 2 ]; then
   echo "optional arguments:"
   echo "  --nj (num jobs)          <1>"
   echo "  --mj (max concur. jobs)  <20>"
+  echo "  --fft-dim                <512>"
+  echo "  --step-size              <128>"
+  echo "  --sample-rate            <8000>"
   exit 1;
 fi
 
@@ -17,6 +20,9 @@ feat_dir=$3
 shift 3
 nj=1
 mj=20
+fft_dim=512
+step_size=128
+sample_rate=8000
 
 # Parse optional arguments
 while true; do
@@ -35,12 +41,18 @@ done
 if [ $nj -gt 1 ]; then
   tools/split_data_dir.sh $data_dir $nj
   qsub $cpu_cmd -sync y -t 1-$nj -tc $mj -j y -o $data_dir/split$nj/extract_feats.log.$TASK_ID \
-    steps/extract_feats.py $data_dir/split$nj $dtype $feat_dir
+    steps/extract_feats.py $data_dir/split$nj $dtype $feat_dir \
+      --fft-dim $fft_dim \
+      --step-size $step_size \
+      --sample-rate $sample_rate
   rm -f $data_dir/{feats_${dtype}.scp,utt2num_spk}
   for i in $(seq 1 $nj); do
     cat $data_dir/split$nj/feats_${dtype}.scp.$i >> $data_dir/feats_${dtype}.scp
     cat $data_dir/split$nj/utt2num_spk.$i >> $data_dir/utt2num_spk
   done
 else
-  $run_cmd steps/extract_feats.py $data_dir $dtype $feat_dir
+  $run_cmd steps/extract_feats.py $data_dir $dtype $feat_dir \
+    --fft-dim $fft_dim \
+    --step-size $step_size \
+    --sample-rate $sample_rate
 fi
