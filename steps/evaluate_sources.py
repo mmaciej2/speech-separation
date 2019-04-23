@@ -29,10 +29,16 @@ def main():
   args = get_args()
 
   sdrs = []
+  sirs = []
+  sars = []
   num_src_dict = load_num_src_dict(args.data_dir+"/utt2num_spk")
 
-  sessionF = open(args.exp_dir+"/results/session_SDRs.txt", 'w')
-  sourceF = open(args.exp_dir+"/results/source_SDRs.txt", 'w')
+  sessionSdrF = open(args.exp_dir+"/results/session_SDRs.txt", 'w')
+  sourceSdrF = open(args.exp_dir+"/results/source_SDRs.txt", 'w')
+  sessionSirF = open(args.exp_dir+"/results/session_SIRs.txt", 'w')
+  sourceSirF = open(args.exp_dir+"/results/source_SIRs.txt", 'w')
+  sessionSarF = open(args.exp_dir+"/results/session_SARs.txt", 'w')
+  sourceSarF = open(args.exp_dir+"/results/source_SARs.txt", 'w')
 
   with open(args.data_dir+"/wav.scp", 'r') as wavF:
     for line in wavF:
@@ -48,24 +54,59 @@ def main():
           est_sources = np.zeros((num_src, source_length))
         oracle_sources[source] = oracle_source[0:source_length]
         est_sources[source] = est_source[0:source_length]
-      sdr, sir, par, perm = mir_eval.separation.bss_eval_sources(oracle_sources, est_sources)
+      sdr, sir, sar, perm = mir_eval.separation.bss_eval_sources(oracle_sources, est_sources)
 
-      sessionF.write(ID+' '+str(sum(sdr)/num_src)+'\n')
-      sourceF.write(ID)
+      sessionSdrF.write(ID+' '+str(sum(sdr)/num_src)+'\n')
+      sourceSdrF.write(ID)
       for value in sdr:
         sdrs.append(value)
-        sourceF.write(' '+str(value))
-      sourceF.write('\n')
+        sourceSdrF.write(' '+str(value))
+      sourceSdrF.write('\n')
 
-  sessionF.close()
-  sourceF.close()
+      sessionSirF.write(ID+' '+str(sum(sir)/num_src)+'\n')
+      sourceSirF.write(ID)
+      for value in sir:
+        sirs.append(value)
+        sourceSirF.write(' '+str(value))
+      sourceSirF.write('\n')
+
+      sessionSarF.write(ID+' '+str(sum(sar)/num_src)+'\n')
+      sourceSarF.write(ID)
+      for value in sar:
+        sars.append(value)
+        sourceSarF.write(' '+str(value))
+      sourceSarF.write('\n')
+
+  sessionSdrF.close()
+  sourceSdrF.close()
+  sessionSirF.close()
+  sourceSirF.close()
+  sessionSarF.close()
+  sourceSarF.close()
 
   sdrs = np.array(sdrs)
+  sirs = np.array(sirs)
+  sars = np.array(sars)
+
   outF = open(args.exp_dir+"/results/SDR_stats.txt", 'w')
   outF.write("Mean:\t"+str(np.mean(sdrs))+'\n')
   outF.write("Std:\t"+str(np.std(sdrs))+'\n')
   outF.write("Max:\t"+str(np.amax(sdrs))+'\n')
   outF.write("Min:\t"+str(np.amin(sdrs))+'\n')
+  outF.close()
+
+  outF = open(args.exp_dir+"/results/SIR_stats.txt", 'w')
+  outF.write("Mean:\t"+str(np.mean(sirs))+'\n')
+  outF.write("Std:\t"+str(np.std(sirs))+'\n')
+  outF.write("Max:\t"+str(np.amax(sirs))+'\n')
+  outF.write("Min:\t"+str(np.amin(sirs))+'\n')
+  outF.close()
+
+  outF = open(args.exp_dir+"/results/SAR_stats.txt", 'w')
+  outF.write("Mean:\t"+str(np.mean(sars))+'\n')
+  outF.write("Std:\t"+str(np.std(sars))+'\n')
+  outF.write("Max:\t"+str(np.amax(sars))+'\n')
+  outF.write("Min:\t"+str(np.amin(sars))+'\n')
   outF.close()
 
 if __name__ == '__main__':
