@@ -15,7 +15,7 @@ def get_args():
   parser.add_argument("data_dir", metavar="data-dir", type=str,
                       help="Data directory")
 
-  parser.add_argument("--hard-mask", type=bool,
+  parser.add_argument("--hard-mask", action='store_true',
                       help="Use hard mask",
                       default=False)
   parser.add_argument("--fft-dim", type=int,
@@ -55,7 +55,10 @@ def main():
   else:
     job_suffix = ''
 
-  dir_out = args.data_dir+"/oracle_eval/"
+  if args.hard_mask:
+    dir_out = args.data_dir+"/oracle_hard_mask_eval/"
+  else:
+    dir_out = args.data_dir+"/oracle_soft_mask_eval/"
   os.system("mkdir -p "+dir_out)
 
   if os.path.isfile(args.data_dir+"/segments"+job_suffix):
@@ -96,13 +99,22 @@ def main():
               oracle_sources = np.zeros((num_src, source_length))
               est_sources = np.zeros((num_src, source_length))
               mix_spec = librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size)
+              oracle_mags = np.zeros((num_src, mix_spec.shape[0], mix_spec.shape[1]))
+              oracle_masks = np.zeros(oracle_mags.shape)
             else:
-              oracle_mag = np.abs(librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size))
-              oracle_mask = np.divide(oracle_mag, np.abs(mix_spec))
-              S = np.multiply(mix_spec, oracle_mask)
-              s = librosa.core.istft(S, hop_length=args.step_size)
               oracle_sources[i-1] = audio
-              est_sources[i-1][0:len(s)] = s
+              oracle_mags[i-1] = np.abs(librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size))
+          if args.hard_mask:
+            spec_coef_ID = np.argmax(oracle_mags, axis=0)
+            for i in range(num_src):
+              oracle_masks[i] = (spec_coef_ID == i).astype(float)
+          else:
+            for i in range(num_src):
+              oracle_masks[i] = np.divide(oracle_mags[i], np.abs(mix_spec))
+          for i in range(num_src):
+            S = np.multiply(mix_spec, oracle_mask[i])
+            s = librosa.core.istft(S, hop_length=args.step_size)
+            est_sources[i][0:len(s)] = s
           sdr, sir, sar, perm = mir_eval.separation.bss_eval_sources(oracle_sources, est_sources, compute_permutation=False)
           write_results(seg, sdr, sir, sar, sessionFs, sourceFs, num_src)
       else:
@@ -113,13 +125,22 @@ def main():
             oracle_sources = np.zeros((num_src, source_length))
             est_sources = np.zeros((num_src, source_length))
             mix_spec = librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size)
+            oracle_mags = np.zeros((num_src, mix_spec.shape[0], mix_spec.shape[1]))
+            oracle_masks = np.zeros(oracle_mags.shape)
           else:
-            oracle_mag = np.abs(librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size))
-            oracle_mask = np.divide(oracle_mag, np.abs(mix_spec))
-            S = np.multiply(mix_spec, oracle_mask)
-            s = librosa.core.istft(S, hop_length=args.step_size)
             oracle_sources[i-1] = audio
-            est_sources[i-1][0:len(s)] = s
+            oracle_mags[i-1] = np.abs(librosa.core.stft(audio, n_fft=args.fft_dim, hop_length=args.step_size))
+        if args.hard_mask:
+          spec_coef_ID = np.argmax(oracle_mags, axis=0)
+          for i in range(num_src):
+            oracle_masks[i] = (spec_coef_ID == i).astype(float)
+        else:
+          for i in range(num_src):
+            oracle_masks[i] = np.divide(oracle_mags[i], np.abs(mix_spec))
+        for i in range(num_src):
+          S = np.multiply(mix_spec, oracle_masks[i])
+          s = librosa.core.istft(S, hop_length=args.step_size)
+          est_sources[i][0:len(s)] = s
         sdr, sir, sar, perm = mir_eval.separation.bss_eval_sources(oracle_sources, est_sources, compute_permutation=False)
         write_results(reco_id, sdr, sir, sar, sessionFs, sourceFs, num_src)
 
