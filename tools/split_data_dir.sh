@@ -19,5 +19,7 @@ for file in wav.scp; do
 done
 
 for file in segments; do
+  if [ -f $dir/$file ]; then
   awk -v dir="$dir/split$ns" -v file="$file" -v ns="$ns" -v nl="$nl" '{if ($2 != prev) {prev = $2; nw += 1}; print($0) > dir"/"file"."(int((nw-1)*ns/nl)+1)}' $dir/$file
+  fi
 done

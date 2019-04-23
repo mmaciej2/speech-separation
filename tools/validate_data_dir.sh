@@ -29,7 +29,9 @@ else
   fi
 fi
 
-feats=$(ls $dir/feats*.scp | awk -F'/' '{print $NF}')
+if [ -f $dir/feats*.scp ]; then
+  feats=$(ls $dir/feats*.scp | awk -F'/' '{print $NF}')
+fi
 
 for file in $feats utt2num_spk utt2spk; do
   if [ -f $dir/$file ]; then

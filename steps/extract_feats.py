@@ -37,7 +37,10 @@ def main():
   args = get_args()
 
   if "SGE_TASK_ID" in os.environ.keys():
-    job_suffix = '.'+os.environ["SGE_TASK_ID"]
+    if os.environ["SGE_TASK_ID"] == 'undefined':
+      job_suffix = ''
+    else:
+      job_suffix = '.'+os.environ["SGE_TASK_ID"]
   else:
     job_suffix = ''
 
