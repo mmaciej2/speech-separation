@@ -39,8 +39,9 @@ while true; do
 done
 
 if [ $nj -gt 1 ]; then
+  tools/validate_data_dir.sh $data_dir || exit 1;
   tools/split_data_dir.sh $data_dir $nj
-  qsub $cpu_cmd -sync y -t 1-$nj -tc $mj -j y -o $data_dir/split$nj/extract_feats.log.$TASK_ID \
+  qsub $cpu_cmd -sync y -t 1-$nj -tc $mj -j y -o $data_dir/split$nj/extract_feats.log.\$TASK_ID \
     steps/extract_feats.py $data_dir/split$nj $dtype $feat_dir \
       --fft-dim $fft_dim \
       --step-size $step_size \
