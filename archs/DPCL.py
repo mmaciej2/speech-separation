@@ -78,7 +78,6 @@ class TestSet(Dataset):
   def __init__(self, datadir):
     self.list = [line.rstrip('\n').split(' ')[1] for line in open(datadir+"/feats_test.scp")]
     self.num_spks = [int(line.rstrip('\n').split(' ')[1]) for line in open(datadir+"/utt2num_spk")]
-#    self.collator = Collator('mix')
     self.collator = default_collate
 
   def __len__(self):
@@ -140,19 +139,10 @@ class SepDNN(nn.Module):
     x = F.tanh(x)
     # x: tensor of shape (batch, seq_length, feat_dim*emb_dim)
 
-#    x = x.permute(0,2,1).contiguous()
-#    # x: tensor of shape (batch, feat_dim*emb_dim, seq_length)
-#
-#    x = x.view((x.shape[0], self.emb_dim, self.feat_dim, x.shape[2]))
-#    # x: tensor of shape (batch, emb_dim, feat_dim, seq_length)
-
     x = x.view((x.shape[0], x.shape[1], self.feat_dim, self.emb_dim))
     # x: tensor of shape (batch, seq_length, feat_dim, emb_dim)
 
-#    x = x.view((x.shape[0], self.feat_dim, x.shape[1], self.emb_dim))
-#    # x: tensor of shape (batch, feat_dim, seq_length, emb_dim)
-
-    return x.contiguous()
+    return F.normalize(x.contiguous(), dim=3)
 
 def compute_cv_loss(model, epoch, batch_sample, plotdir=""):
   if plotdir:
@@ -166,33 +156,16 @@ def compute_loss(model, epoch, batch_sample, plotdir=""):
   model.zero_grad()
 
   mix = batch_sample['mix'].cuda() # shape: (batch, seq_length, feat_dim)
-#  affinity = batch_sample['affinity'].permute(0,2,1,3).cuda() # shape: (batch, feat_dim, seq_length, num_spk)
   affinity = batch_sample['affinity'].cuda() # shape: (batch, seq_length, feat_dim, num_spk)
-#  print("aff[0,0]:", affinity[0,0,0,:].detach().cpu().numpy())
-#  print("aff[0,1]:", affinity[0,0,1,:].detach().cpu().numpy())
-#  print("aff[1,0]:", affinity[0,1,0,:].detach().cpu().numpy())
-#  print("aff[1,1]:", affinity[0,1,1,:].detach().cpu().numpy())
 
   loss = 0
   norm = torch.tensor(mix.shape[0]*mix.shape[1]*mix.shape[2]).cuda().float()
 
   model.hidden = model.init_hidden(len(mix))
   embeddings = model(mix) # shape: (batch, seq_length, feat_dim, emb_dim)
-#  print("emb[0,0]:", embeddings[0,0,0,:].detach().cpu().numpy())
-#  print("emb[0,1]:", embeddings[0,0,1,:].detach().cpu().numpy())
-#  print("emb[1,0]:", embeddings[0,1,0,:].detach().cpu().numpy())
-#  print("emb[1,1]:", embeddings[0,1,1,:].detach().cpu().numpy())
   dims = embeddings.shape
   embeddings = embeddings.view((dims[0], dims[1]*dims[2], dims[3])) # shape: (batch, seq_length*feat_dim, emb_dim)
-#  print("res[0,0]:", embeddings[0,0,:].detach().cpu().numpy())
-#  print("res[0,1]:", embeddings[0,1,:].detach().cpu().numpy())
-#  print("res[1,0]:", embeddings[0,129,:].detach().cpu().numpy())
-#  print("res[1,1]:", embeddings[0,130,:].detach().cpu().numpy())
   affinity = affinity.view((dims[0], dims[1]*dims[2], -1)) # shape: (batch, seq_length*feat_dim, num_spk)
-#  print("res[0,0]:", affinity[0,0,:].detach().cpu().numpy())
-#  print("res[0,1]:", affinity[0,1,:].detach().cpu().numpy())
-#  print("res[1,0]:", affinity[0,129,:].detach().cpu().numpy())
-#  print("res[1,1]:", affinity[0,130,:].detach().cpu().numpy())
 
   if plotdir:
     os.system("mkdir -p "+plotdir)
@@ -202,29 +175,14 @@ def compute_loss(model, epoch, batch_sample, plotdir=""):
     plot.plot_spec(sub_aff_mat, prefix+"Sub_Affinity_Matrix.png")
     plot.plot_spec(sub_emb_mat, prefix+"Sub_Estimated_Affinity_Matrix.png")
     plot.plot_spec(mix[0].detach().cpu().numpy(), prefix+'Input.png')
-#    plot.clust_plot(embeddings[0].detach().cpu().numpy(), mix[0].shape[::-1], prefix+'Cluster_Partitioning.png')
     plot.clust_plot(embeddings[0].detach().cpu().numpy(), mix[0].shape, prefix+'Cluster_Partitioning.png')
     for i in range(affinity.shape[2]):
       plot.plot_spec(affinity[0,:,i].view(mix[0].shape).detach().cpu().numpy(), prefix+'Source'+str(i+1)+'_Bins.png')
     plot.plot_embs(embeddings[0:5].detach().cpu().numpy(), affinity[0:5].detach().cpu().numpy(), prefix+'Embeddings.png')
-    # (seq_length*feat_dim, emb_dim) (seq_length*feat_dim, num_spk)
 
   loss += frob_sq_ata(embeddings.permute(0,2,1), embeddings)
   loss -= 2*frob_sq_ata(embeddings.permute(0,2,1), affinity)
 #  loss += frob_sq_ata(affinity.permute(0,2,1), affinity) # Doesn't depend on network
-#  length = embeddings.shape[0]
-#  print("length:", length)
-#  loss += frob_sq_ata(embeddings.permute(0,2,1)[0:length,:,:], embeddings[0:length,:,:])
-#  loss -= 2*frob_sq_ata(embeddings.permute(0,2,1)[0:length,:,:], affinity[0:length,:,:])
-
-
-#  with torch.no_grad():
-#    reg_loss = torch.sum((torch.matmul(embeddings.detach().cpu()[0,:,:], embeddings.detach().cpu().permute(0,2,1)[0,:,:])-torch.matmul(affinity.detach().cpu()[0,:,:], affinity.detach().cpu().permute(0,2,1)[0,:,:])).pow(2))
-#    red_loss = frob_sq_ata(embeddings.detach().cpu().permute(0,2,1)[0,:,:], embeddings.detach().cpu()[0,:,:])-2*frob_sq_ata(embeddings.detach().cpu().permute(0,2,1)[0,:,:], affinity.detach().cpu()[0,:,:])+frob_sq_ata(affinity.detach().cpu().permute(0,2,1)[0,:,:], affinity.detach().cpu()[0,:,:])
-#    print("reg_loss:", reg_loss.numpy(), "red_loss:", red_loss.numpy())
-#    print("source1 count:", torch.sum(affinity.detach().cpu()[0,:,0]).numpy())
-#    print("source2 count:", torch.sum(affinity.detach().cpu()[0,:,1]).numpy())
-#    print("frob_sq_ata YTY:", frob_sq_ata(affinity.detach().cpu().permute(0,2,1)[0,:,:], affinity.detach().cpu()[0,:,:]).numpy())
 
   return loss/norm, norm
 
