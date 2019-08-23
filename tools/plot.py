@@ -34,6 +34,14 @@ def plot_spec(array, path):
   plt.clf()
   plt.cla()
 
+def plot_cnn_basis_spec(array, path):
+  mag_fft_basis = np.abs(np.fft.fft(array))[:,:int(array.shape[1]/2)-1:-1]
+  sort_mat = np.zeros(mag_fft_basis.shape)
+  for i in range(mag_fft_basis.shape[1]):
+    sort_mat[:,i] = mag_fft_basis[:,i]*i
+  sort_inds = np.argsort(np.sum(sort_mat, axis=1)/np.sum(mag_fft_basis, axis=1))
+  plot_spec(mag_fft_basis[sort_inds], path)
+
 
 def plot_loss(*args):
   path = args[-1]

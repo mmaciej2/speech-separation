@@ -329,11 +329,11 @@ def compute_loss(model, epoch, batch_sample, plotdir=""):
       # est_sources: tensor of shape (batch, num_src, length-time)
 
       perms = list(itertools.permutations(range(model.num_src)))
-      losses = torch.stack([SI_SNR(est_sources, oracle_sources_permute) for oracle_sources_permute in [torch.cat([torch.unsqueeze(sources[i], 1) for i in perm], dim=1) for perm in perms]])
+      losses = torch.stack([-1.0*SI_SNR(est_sources, oracle_sources_permute) for oracle_sources_permute in [torch.cat([torch.unsqueeze(sources[i], 1) for i in perm], dim=1) for perm in perms]])
 
       min_losses, indices = torch.min(losses, 0)
 
-      loss -= torch.sum(min_losses)/num_src  # loss per speaker
+      loss += torch.sum(min_losses)/num_src  # loss per speaker
       norm += torch.tensor(sample_size)  # loss per mixture
 
       if plotdir:
@@ -341,8 +341,7 @@ def compute_loss(model, epoch, batch_sample, plotdir=""):
         mix_mag_spec = np.abs(librosa.core.stft(mix[0].detach().cpu().numpy(), n_fft=model.basis_len, hop_length=model.stride))
         plot.plot_spec(mix_mag_spec.T, plotdir+'/STFT-Mixture.png')
         basis_vecs = torch.squeeze(model.conv_extract.weight).detach().cpu().numpy()
-        mag_fft_basis = np.abs(np.fft.fft(basis_vecs))
-        plot.plot_spec(mag_fft_basis[:,:int(mag_fft_basis.shape[1]/2)-1:-1], plotdir+'/basis_vec_spectra.png')
+        plot.plot_cnn_basis_spec(basis_vecs, plotdir+'/basis_vec_mag_spectra.png')
         for i in range(num_src):
           est_mag_spec = np.abs(librosa.core.stft(est_sources[0,i,:].detach().cpu().numpy(), n_fft=model.basis_len, hop_length=model.stride))
           plot.plot_spec(est_mag_spec.T, plotdir+'/STFT-estimated-'+str(i+1)+'.png')
