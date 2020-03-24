@@ -35,3 +35,5 @@ case $dset in
     awk -v wavdir="$wavdir" '{print $0" "wavdir $0".wav"}' id_lists/${dset}.txt > data/$dset/wav.scp
     ;;
 esac
+
+awk '{print $1" 2"}' data/$dset/wav.scp > data/$dset/reco2num_spk

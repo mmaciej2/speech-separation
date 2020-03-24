@@ -40,8 +40,12 @@ def plot_cnn_basis_spec(array, path):
   for i in range(mag_fft_basis.shape[1]):
     sort_mat[:,i] = mag_fft_basis[:,i]*i
   sort_inds = np.argsort(np.sum(sort_mat, axis=1)/np.sum(mag_fft_basis, axis=1))
-  plot_spec(mag_fft_basis[sort_inds], path)
-
+  plot_spec(mag_fft_basis[sort_inds], path+'/basis_vc_mag_spectra.png')
+  if array.shape[1] < 512:
+    array = np.pad(array, ((0,0),(0,512-array.shape[1])), 'constant')
+    mag_fft_basis = np.abs(np.fft.fft(array))[:,:int(array.shape[1]/2)-1:-1]
+    plot_spec(mag_fft_basis[sort_inds], path+'/basis_vc_mag_spectra_padded.png')
+  return sort_inds
 
 def plot_loss(*args):
   path = args[-1]

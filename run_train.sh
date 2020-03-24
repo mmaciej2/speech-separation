@@ -3,19 +3,21 @@
 set -e
 . ./cmd.sh
 
-stage=0
+stage=1
 
-arch=uPIT
-train_set=mixer6_CH02_tr
-cv_set=mixer6_CH02_cv
+arch=TasNet3
+train_set=wsj_tr
+cv_set=wsj_cv
 model_config= # optional config file for model
-email= # set this if you would like qsub email and to run the train command in the background
+email=mmaciej2@jhu.edu # set this if you would like qsub email and to run the train command in the background
 
-featdir=`pwd`/feats
+suffix=
+
 copy_data_to_gpu=true
 start_epoch=0
-num_epochs=200
-batch_size=100
+num_epochs=100
+batch_size=15
+n_debug=-1
 
 
 train_data_dir=data/$train_set
@@ -25,6 +27,8 @@ if [ -z "$email" ]; then
 else
   opt="-M $email"
 fi
+
+source activate mm
 
 
 # Data prep
@@ -38,30 +42,23 @@ if [ $stage -le 0 ]; then
   done
 fi
 
-# Extract features
-if [ $stage -le 1 ]; then
-  echo "### Extracting features (stage 1) ###"
-
-  for data_dir in $train_data_dir $cv_data_dir; do
-    steps/extract_feats.sh $data_dir "train" $featdir/$(basename $data_dir)_train
-  done
-fi
-
 # Train model
-if [ $stage -le 2 ]; then
-  echo "### Training model (stage 2) ###"
+if [ $stage -le 1 ]; then
+  echo "### Training model (stage 1) ###"
 
-  exp_dir=exp/${arch}_${train_set}
+  exp_dir=exp/${arch}_${train_set}${suffix}
+  [ "$n_debug" -lt "0" ] || exp_dir=${exp_dir}_DBG
   mkdir -p $exp_dir
   cp archs/${arch}.py $exp_dir/arch.py
   [ -z "$model_config" ] || cp $model_config $exp_dir/conf
 
-  qsub -j y -o $exp_dir/train_\$JOB_ID.log $opt $train_cmd \
+  qsub -j y -o $exp_dir/train_$(date +%Y%m%d_%H%M%S).log $opt $train_cmd \
     steps/qsub_train.sh \
     $arch \
     $exp_dir \
     $train_data_dir \
     --cv-datadir "$cv_data_dir" \
+    --n-debug "$n_debug" \
     --model-config "$model_config" \
     --copy-data-to-gpu "$copy_data_to_gpu" \
     --start-epoch "$start_epoch" \

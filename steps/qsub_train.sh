@@ -5,12 +5,14 @@
 #$ -l gpu=1
 #$ -r no
 set -e
-device=`free-gpu`
+source activate mm
+module load cuda90/toolkit cudnn/7.2.1_cuda9.0
+device=$CUDA_VISIBLE_DEVICES
 
 
 # This is root directory for copying data onto the local machine that
 #   the GPU job is running on
-gpu_data_dir=/export/${HOSTNAME}/mmaciej2
+gpu_data_dir=$TMPDIR
 
 if [ $# -le 2 ]; then
   echo "Usage:"
@@ -33,6 +35,7 @@ copy_data_to_gpu=true
 start_epoch=0
 num_epochs=200
 batch_size=100
+n_debug=-1
 
 echo "args:"
 echo "  arch: $arch"
@@ -43,7 +46,7 @@ while true; do
   [ -z "${1:-}" ] && break;
   case "$1" in
     --*) name=$(echo "$1" | sed 's/--//g' | sed 's/-/_/g')
-      printf -v $name "$2"
+      printf -v $name -- "$2"
       echo "  $name: $2"
       shift 2
       ;;
@@ -67,15 +70,17 @@ if [ -d "$datadir" ]; then
   echo "  from a failed run and can be deleted"
   exit 1;
 fi
-mkdir -p $dirout/intermediate_models $dirout/train_stats/plots
-for file in $dirout/train_stats/{train,cv}_loss.txt; do
+mkdir -p $dirout/intermediate_models $dirout/stats_tr/plots
+for file in $dirout/stats_tr/{train,cv}_loss.txt; do
   touch $file
   awk -v ep=$start_epoch '{if($1<=ep){print $0}}' $file > ${file}.tmp
   mv ${file}.tmp $file
 done
 
+set -x
 python3 steps/train_qsub.py $arch $device $train_datadir $dirout \
                             --cv-data-dir "$cv_datadir" \
+                            --n-debug "$n_debug" \
                             --model-config "$model_config" \
                             --train-copy-location "$datadir" \
                             --start-epoch $start_epoch \

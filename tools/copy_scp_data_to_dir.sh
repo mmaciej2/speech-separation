@@ -5,12 +5,14 @@ if [ $# -le 1 ]; then
   echo "$0 <scp-file> <dir-out>"
   echo "optional arguments:"
   echo " --bwlimit"
+  echo " --find-sources <false>"
   exit 1;
 fi
 
 scp=$1
 dir_out=$2
 shift 2
+find_sources=false
 
 # Parse optional arguments
 while true; do
@@ -31,4 +33,8 @@ opts=
 [ -z "$bwlimit" ] || opts="$opts --bwlimit=$bwlimit"
 
 mkdir -p $dir_out
-rsync $opts --files-from=<(cut -d' ' -f2 $scp) / $dir_out/
+if [ "$find_sources" == true ]; then
+  rsync $opts --files-from=<(cut -d' ' -f2 $scp | sed -e 's/\/mix\//\/*\//g' | while read line; do find $line; done) / $dir_out/
+else
+  rsync $opts --files-from=<(cut -d' ' -f2 $scp) / $dir_out/
+fi

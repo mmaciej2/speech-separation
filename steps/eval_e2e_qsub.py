@@ -32,6 +32,9 @@ def get_args():
   parser.add_argument("--batch-size", type=int,
                       help="Batch size",
                       default=100)
+  parser.add_argument("--save-diagnostics", type=bool,
+                      help="Save diagnostic info",
+                      default=False)
 
   args = parser.parse_args()
   return args
@@ -69,7 +72,10 @@ def main():
   model.eval()
   with torch.no_grad():
     for i_batch, sample_batch in enumerate(dataloader):
-      m.compute_masks(model, sample_batch, args.dirout)
+      if args.save_diagnostics in ['True', 'true']:
+        m.estimate_sources(model, sample_batch, args.dirout, save_diagnostics=True)
+      else:
+        m.estimate_sources(model, sample_batch, args.dirout)
 
 if __name__ == '__main__':
   main()

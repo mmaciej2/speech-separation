@@ -16,6 +16,7 @@ if [ $# -le 1 ]; then
   echo "optional arguments:"
   echo "  --model-config"
   echo "  --batch-size             <100>"
+  echo "  --save-diagnostics       <False>"
   echo "  --intermediate-model-num"
   exit 1;
 fi
@@ -24,6 +25,7 @@ model_dir=$1
 test_data_dirs=""
 shift 1
 batch_size=100
+save_diagnostics=False
 
 echo "args:"
 echo "  model_dir: $model_dir"
@@ -47,8 +49,8 @@ echo ""
 
 
 if [ -z "$intermediate_model_num" ]; then
-  model=$model_dir/final.mdl
-  base_dir_out=$model_dir/output_final
+  model=$model_dir/best.mdl
+  base_dir_out=$model_dir/output_best
 else
   model=$model_dir/intermediate_models/${intermediate_model_num}.mdl
   base_dir_out=$model_dir/output_$intermediate_model_num
@@ -58,9 +60,10 @@ fi
 echo "Working on machine $HOSTNAME"
 
 for data_dir in $test_data_dirs; do
-  dir_out=$base_dir_out/$(basename $data_dir)/masks
-  python3 steps/eval_qsub.py $model_dir/arch.py $device $model $data_dir $dir_out \
-                             --model-config "$model_config" \
-                             --batch-size $batch_size \
-                             --model-config "$model_config"
+  dir_out=$base_dir_out/$(basename $data_dir)/wav
+  python3 steps/eval_e2e_qsub.py $model_dir/arch.py $device $model $data_dir $dir_out \
+                                --model-config "$model_config" \
+                                --batch-size $batch_size \
+                                --save-diagnostics "$save_diagnostics" \
+                                --model-config "$model_config"
 done
