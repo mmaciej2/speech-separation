@@ -65,7 +65,7 @@ class TrainSet(Dataset):
 
     if os.path.isfile(datadir+"/segments"):
       self.use_segs = True
-      self.list = [line.rstrip('\n').split(' ') for line in datadir+"/segments"]
+      self.list = [line.rstrip('\n').split(' ') for line in open(datadir+"/segments")]
     else:
       self.use_segs = False
       self.list = [line.split(' ')[0] for line in open(filelist)]
@@ -79,7 +79,7 @@ class TrainSet(Dataset):
     if self.use_segs:
       wav_path = self.wav_map[self.list[idx][1]]
       offset = float(self.list[idx][2])
-      duration = float(self.list[idx][3])-float(self.list[idx][3])
+      duration = float(self.list[idx][3])-float(self.list[idx][2])
     else:
       wav_path = self.wav_map[self.list[idx]]
       duration = librosa.core.get_duration(filename=wav_path)
@@ -121,7 +121,7 @@ class ValidationSet(Dataset):
 
     if os.path.isfile(datadir+"/segments"):
       self.use_segs = True
-      self.list = [line.rstrip('\n').split(' ') for line in datadir+"/segments"]
+      self.list = [line.rstrip('\n').split(' ') for line in open(datadir+"/segments")]
     else:
       self.use_segs = False
       self.list = [line.split(' ')[0] for line in open(filelist)]
@@ -135,7 +135,7 @@ class ValidationSet(Dataset):
     if self.use_segs:
       wav_path = self.wav_map[self.list[idx][1]]
       offset = float(self.list[idx][2])
-      duration = float(self.list[idx][3])-float(self.list[idx][3])
+      duration = float(self.list[idx][3])-float(self.list[idx][2])
     else:
       wav_path = self.wav_map[self.list[idx]]
     all_wav_paths = sorted(glob.glob(wav_path.replace("/mix/","/*/")))
@@ -163,7 +163,7 @@ class TestSet(Dataset):
     self.wav_map = {line.split(' ')[0] : line.rstrip('\n').split(' ')[1] for line in open(filelist)}
     if os.path.isfile(datadir+"/segments"):
       self.use_segs = True
-      self.list = [line.rstrip('\n').split(' ') for line in datadir+"/segments"]
+      self.list = [line.rstrip('\n').split(' ') for line in open(datadir+"/segments")]
     else:
       self.use_segs = False
       self.list = [line.split(' ')[0] for line in open(filelist)]
@@ -177,7 +177,7 @@ class TestSet(Dataset):
       sample = {'name': self.list[idx][0]}
       wav_path = self.wav_map[self.list[idx][1]]
       offset = float(self.list[idx][2])
-      duration = float(self.list[idx][3])-float(self.list[idx][3])
+      duration = float(self.list[idx][3])-float(self.list[idx][2])
     else:
       sample = {'name': self.list[idx]}
       wav_path = self.wav_map[self.list[idx]]
