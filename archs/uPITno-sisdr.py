@@ -9,11 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+from components import conv_stft
 from datasets import E2E
 
-TrainSet = E2E.TrainSet
-ValidationSet = E2E.ValidationSet
-TestSet = E2E.TestSet
+TrainSet = E2E.TrainSet_NoisyOracle
+ValidationSet = E2E.ValidationSet_NoisyOracle
+TestSet = E2E.TestSet_NoisyOracle
 
 # Define Network
 
@@ -53,7 +54,7 @@ class SepDNN(nn.Module):
   def pad_batch(self, x):  # x: [batch, length]
     # This zero pads the batch to be even with window/stride
     length = x.shape[1]
-    new_length = np.ceil((length-self.basis_len)/self.stride).astype(int)*self.stride+self.basis_len
+    new_length = np.ceil((length-self.window)/self.shift).astype(int)*self.shift+self.window
     return F.pad(x, (0, new_length-length))
 
   def __init__(self, gpuid, **kwargs):
@@ -61,20 +62,18 @@ class SepDNN(nn.Module):
 
     self.gpuid = gpuid
 
-    self.set_param(kwargs, 'num_bases', 500, int)
-    self.set_param(kwargs, 'basis_len', 80, int)
-    self.set_param(kwargs, 'stride', 40, int)
+    self.set_param(kwargs, 'window', 256, int)
+    self.set_param(kwargs, 'shift', 64, int)
     self.set_param(kwargs, 'num_srcs', 2, int)
     self.set_param(kwargs, 'hidden_dim', 600, int)
     self.set_param(kwargs, 'num_layers', 4, int)
 
     # Network Layers
-    self.enc = nn.Conv1d(1, self.num_bases, self.basis_len, stride=self.stride, padding=self.basis_len//2, bias=False)
-    self.dec = nn.ConvTranspose1d(self.num_bases, 1, self.basis_len, stride=self.stride, padding=self.basis_len//2, bias=False)
+    self.STFT = conv_stft.ConvSTFT(self.window, self.shift)
 
-    self.norm = nn.LayerNorm(self.num_bases)
-    self.blstm = SkipBLSTM(self.num_bases, self.hidden_dim, num_layers=self.num_layers)
-    self.lin = nn.Linear(2*self.hidden_dim, self.num_srcs*self.num_bases)
+    self.norm = nn.LayerNorm(self.window//2+1)
+    self.blstm = SkipBLSTM(self.window//2+1, self.hidden_dim, num_layers=self.num_layers)
+    self.lin = nn.Linear(2*self.hidden_dim, self.num_srcs*(self.window//2+1))
 
   def forward(self, x):  # x: [batch, len]
     batch = x.shape[0]
@@ -83,23 +82,28 @@ class SepDNN(nn.Module):
     # Extract features
     x = self.pad_batch(x)
     x = torch.unsqueeze(x, 1)  # x: [batch, 1, len]
-    feats = F.relu_(self.enc(x)).permute(2, 0, 1)  # feats: [t, batch, n_bases]
+#    feats = F.relu_(self.enc(x)).permute(2, 0, 1)  # feats: [t, batch, n_bases]
+    stft = self.STFT.encode(x)  # stft: [batch, f, t]
+    feats = conv_stft.stft_mag(stft).permute(2, 0, 1)  # feats: [t, batch, f//2+1]
     feats = self.norm(feats)
 
     # Apply BLSTMs
     enc = self.blstm(feats)  # enc: [t, batch, hidden_dim*2]
 
     # Create masks
-    masks = torch.sigmoid(self.lin(enc))  # masks: [t, batch, num_bases*n_srcs]
-    masks = torch.reshape(masks, (-1, batch, self.num_srcs, self.num_bases)).permute(1, 2, 3, 0)  # masks: [batch, n_srcs, num_bases, t]
+    masks = torch.sigmoid(self.lin(enc))  # masks: [t, batch, (f//2+1)*n_srcs]
+    masks = torch.reshape(masks, (-1, batch, self.num_srcs, self.window//2+1)).permute(1, 2, 3, 0)  # masks: [batch, n_srcs, f//2+1, t]
 
     # Apply masks
-    feats = torch.unsqueeze(feats, -1).permute(1, 3, 2, 0)  # feats: [batch, 1, num_bases, t]
-    feats = feats * masks  # feats: [batch, n_srcs, num_bases, t]
+#    feats = torch.unsqueeze(feats, -1).permute(1, 3, 2, 0)  # feats: [batch, 1, num_bases, t]
+#    feats = feats * masks  # feats: [batch, n_srcs, num_bases, t]
+    feats = stft.unsqueeze(-1).permute(0, 3, 1, 2)  # [batch, 1, f, t]
+    feats = conv_stft.apply_mask(feats, masks)
 
     # Synthesize audio
-    feats = torch.reshape(feats, (batch*self.num_srcs, self.num_bases, -1))
-    waveforms = self.dec(feats)  # waveforms: [batch*self.num_srcs, 1, len]
+    feats = torch.reshape(feats, (batch*self.num_srcs, self.window, -1))
+#    waveforms = self.dec(feats)  # waveforms: [batch*self.num_srcs, 1, len]
+    waveforms = self.STFT.decode(feats)  # waveforms: [batch*self.num_srcs, 1, len]
     waveforms = torch.squeeze(waveforms, 1)
     waveforms = torch.reshape(waveforms, (batch,  self.num_srcs, -1))
 
@@ -169,4 +173,4 @@ def estimate_sources(model, batch_sample, out_dir, save_diagnostics=False):
       s = est_srcs[i, src, 0:length[i]].cpu().numpy()
       s = 0.9*s/np.max(np.abs(s))
       wav = s*32767
-      scipy.io.wavfile.write(out_dir+"/s"+str(src+1)+'/'+name[i]+".wav", 8000, wav.astype('int16'))
+      scipy.io.wavfile.write(out_dir+"/s"+str(src+1)+'/'+name[i]+".wav", 16000, wav.astype('int16'))

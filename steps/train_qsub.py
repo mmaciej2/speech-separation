@@ -3,6 +3,7 @@
 import argparse
 import sys
 import os
+import datetime
 import numpy as np
 
 sys.path.append('tools')
@@ -127,7 +128,7 @@ def main():
     datasubset = Subset(dataset, range(args.n_debug))
     dataloader = DataLoader(datasubset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator)
   else:
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator, num_workers=1)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=dataset.collator)
   if args.cv_data_dir:
     cv_dataset = m.ValidationSet(args.cv_data_dir, args.train_copy_location)
     if args.n_debug > 0:
@@ -164,6 +165,7 @@ def main():
       load_losses(cv_loss_file, epoch_cv_losses)
 
   print("training")
+  print("---", datetime.datetime.now(), "------------------------------------")
   best_loss = 1e12
   for epoch in range(args.start_epoch, args.num_epochs):
     epoch_loss = 0.0
@@ -175,6 +177,11 @@ def main():
       loss.backward()
       torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm)
       optimizer.step()
+
+      if epoch == 0 and  np.round(np.log2(i_batch+1)) == np.log2(i_batch+1):
+        print("Epoch", str(epoch+1).zfill(3), "iteration", i_batch+1, "has loss", loss.detach().cpu().numpy())
+        print("---", datetime.datetime.now(), "------------------------------------")
+        sys.stdout.flush()
 
     if args.cv_data_dir:
       cv_epoch_loss = 0.0
@@ -206,6 +213,8 @@ def main():
         best_loss = cv_epoch_loss/cv_epoch_norm
         print("Saving model for epoch "+str(epoch+1).zfill(3))
         torch.save(model.state_dict(), args.dirout+'/best.mdl')
+      else:
+        print("Model has not improved.")
       if lr_scheduler.step(cv_epoch_loss/cv_epoch_norm):
         model.load_state_dict(torch.load(args.dirout+'/best.mdl', map_location=lambda storage, loc: storage.cuda()))
     else:
@@ -213,13 +222,15 @@ def main():
         best_loss = epoch_loss/epoch_norm
         print("Saving model for epoch "+str(epoch+1).zfill(3))
         torch.save(model.state_dict(), args.dirout+'/best.mdl')
+      else:
+        print("Model has not improved.")
       if lr_scheduler.step(epoch_loss/epoch_norm):
         model.load_state_dict(torch.load(args.dirout+'/best.mdl', map_location=lambda storage, loc: storage.cuda()))
 
     if epoch % 25 == 24:
       print("Saving intermediate model at epoch "+str(epoch+1).zfill(3))
       torch.save(model.state_dict(), int_model_dir+str(epoch+1).zfill(3)+'.mdl')
-    print("--------------------------------------------------------------------")
+    print("---", datetime.datetime.now(), "------------------------------------")
     sys.stdout.flush()
 
   torch.save(model.state_dict(), int_model_dir+'final.mdl')

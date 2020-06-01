@@ -9,11 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+from components import conv_stft
 from datasets import E2E
 
-TrainSet = E2E.TrainSet
-ValidationSet = E2E.ValidationSet
-TestSet = E2E.TestSet
+TrainSet = E2E.TrainSet_NoisyOracle
+ValidationSet = E2E.ValidationSet_NoisyOracle
+TestSet = E2E.TestSet_NoisyOracle
 
 # Define Network
 
@@ -53,7 +54,7 @@ class SepDNN(nn.Module):
   def pad_batch(self, x):  # x: [batch, length]
     # This zero pads the batch to be even with window/stride
     length = x.shape[1]
-    new_length = np.ceil((length-self.basis_len)/self.stride).astype(int)*self.stride+self.basis_len
+    new_length = np.ceil((length-self.window)/self.shift).astype(int)*self.shift+self.window
     return F.pad(x, (0, new_length-length))
 
   def __init__(self, gpuid, **kwargs):
@@ -61,20 +62,18 @@ class SepDNN(nn.Module):
 
     self.gpuid = gpuid
 
-    self.set_param(kwargs, 'num_bases', 500, int)
-    self.set_param(kwargs, 'basis_len', 80, int)
-    self.set_param(kwargs, 'stride', 40, int)
+    self.set_param(kwargs, 'window', 256, int)
+    self.set_param(kwargs, 'shift', 64, int)
     self.set_param(kwargs, 'num_srcs', 2, int)
     self.set_param(kwargs, 'hidden_dim', 600, int)
     self.set_param(kwargs, 'num_layers', 4, int)
 
     # Network Layers
-    self.enc = nn.Conv1d(1, self.num_bases, self.basis_len, stride=self.stride, padding=self.basis_len//2, bias=False)
-    self.dec = nn.ConvTranspose1d(self.num_bases, 1, self.basis_len, stride=self.stride, padding=self.basis_len//2, bias=False)
+    self.STFT = conv_stft.ConvSTFT(self.window, self.shift)
 
-    self.norm = nn.LayerNorm(self.num_bases)
-    self.blstm = SkipBLSTM(self.num_bases, self.hidden_dim, num_layers=self.num_layers)
-    self.lin = nn.Linear(2*self.hidden_dim, self.num_srcs*self.num_bases)
+    self.norm = nn.LayerNorm(self.window//2+1)
+    self.blstm = SkipBLSTM(self.window//2+1, self.hidden_dim, num_layers=self.num_layers)
+    self.lin = nn.Linear(2*self.hidden_dim, self.num_srcs*(self.window//2+1))
 
   def forward(self, x):  # x: [batch, len]
     batch = x.shape[0]
@@ -83,23 +82,36 @@ class SepDNN(nn.Module):
     # Extract features
     x = self.pad_batch(x)
     x = torch.unsqueeze(x, 1)  # x: [batch, 1, len]
-    feats = F.relu_(self.enc(x)).permute(2, 0, 1)  # feats: [t, batch, n_bases]
+#    feats = F.relu_(self.enc(x)).permute(2, 0, 1)  # feats: [t, batch, n_bases]
+    stft = self.STFT.encode(x)  # stft: [batch, f, t]
+    feats = conv_stft.stft_mag(stft).permute(2, 0, 1)  # feats: [t, batch, f//2+1]
     feats = self.norm(feats)
 
     # Apply BLSTMs
     enc = self.blstm(feats)  # enc: [t, batch, hidden_dim*2]
 
     # Create masks
-    masks = torch.sigmoid(self.lin(enc))  # masks: [t, batch, num_bases*n_srcs]
-    masks = torch.reshape(masks, (-1, batch, self.num_srcs, self.num_bases)).permute(1, 2, 3, 0)  # masks: [batch, n_srcs, num_bases, t]
+    masks = torch.sigmoid(self.lin(enc))  # masks: [t, batch, (f//2+1)*n_srcs]
+    masks = torch.reshape(masks, (-1, batch, self.num_srcs, self.window//2+1)).permute(1, 2, 3, 0)  # masks: [batch, n_srcs, f//2+1, t]
+
+    return stft, masks
+
+  def compute_audio(self, x):  # x: [batch, len]
+    batch = x.shape[0]
+    self.blstm.init_hidden(batch)
+
+    stft, masks = self.forward(x)
 
     # Apply masks
-    feats = torch.unsqueeze(feats, -1).permute(1, 3, 2, 0)  # feats: [batch, 1, num_bases, t]
-    feats = feats * masks  # feats: [batch, n_srcs, num_bases, t]
+#    feats = torch.unsqueeze(feats, -1).permute(1, 3, 2, 0)  # feats: [batch, 1, num_bases, t]
+#    feats = feats * masks  # feats: [batch, n_srcs, num_bases, t]
+    feats = stft.unsqueeze(-1).permute(0, 3, 1, 2)  # [batch, 1, f, t]
+    feats = conv_stft.apply_mask(feats, masks)
 
     # Synthesize audio
-    feats = torch.reshape(feats, (batch*self.num_srcs, self.num_bases, -1))
-    waveforms = self.dec(feats)  # waveforms: [batch*self.num_srcs, 1, len]
+    feats = torch.reshape(feats, (batch*self.num_srcs, self.window, -1))
+#    waveforms = self.dec(feats)  # waveforms: [batch*self.num_srcs, 1, len]
+    waveforms = self.STFT.decode(feats)  # waveforms: [batch*self.num_srcs, 1, len]
     waveforms = torch.squeeze(waveforms, 1)
     waveforms = torch.reshape(waveforms, (batch,  self.num_srcs, -1))
 
@@ -120,10 +132,62 @@ def batch_SI_SNR(estimates, sources):  # [batch, srcs, length]
 
   return si_snr
 
-def compute_cv_loss(model, epoch, batch_sample, plotdir=""):
-  return compute_loss(model, epoch, batch_sample, plotdir=plotdir)
+def batch_mask_loss(stft, est_mask, tgt_mask):
+  mask_error = est_mask-tgt_mask
+  weighted_error = mask_error * conv_stft.stft_mag(stft)
+  weighted_error = weighted_error ** 2
+  n_batch, n_srcs, f, t = weighted_error.shape
+  total_error = torch.sum(torch.reshape(weighted_error, (n_batch, n_srcs*f*t)), dim=-1)
+  return total_error / (n_srcs+f+t)
+
+def compute_PSA_mask(mix_stft, src_stft):
+  prod = mix_stft * src_stft
+  sqr = mix_stft ** 2
+  num = torch.cat([prod[..., :1, :],
+                   prod[..., 1:prod.shape[-2]//2, :] + prod[..., prod.shape[-2]//2+1:, :],
+                   prod[..., prod.shape[-2]//2:prod.shape[-2]//2+1, :]], dim=-2)
+  den = torch.cat([sqr[..., :1, :],
+                   sqr[..., 1:sqr.shape[-2]//2, :] + sqr[..., sqr.shape[-2]//2+1:, :],
+                   sqr[..., sqr.shape[-2]//2:sqr.shape[-2]//2+1, :]], dim=-2)
+  return num/(den+1e-12)
 
 def compute_loss(model, epoch, batch_sample, plotdir=""):
+  loss = 0.0
+  norm = 0.0
+
+  mix = batch_sample['mix'].cuda()
+  srcs = batch_sample['srcs'].cuda().permute(0, 2, 1)
+  length = batch_sample['length'].cuda()
+
+  batch = len(length)
+
+  model.zero_grad()
+
+  stft, masks = model(mix)
+  feats = stft.unsqueeze(-1).permute(0, 3, 1, 2)  # [batch, 1, f, t]
+#  feats = conv_stft.apply_mask(feats, masks)  # [batch, n_srcs, f, t]
+
+  srcs = torch.reshape(srcs, (batch*model.num_srcs, -1))
+  srcs = model.pad_batch(srcs)
+  srcs = torch.unsqueeze(srcs, 1)  # srcs: [batch*n_srcs, 1, len]
+  srcs_stft = model.STFT.encode(srcs)  # srcs_stft: [batch*n_srcs, f, t]
+  _, f, t = srcs_stft.shape
+  srcs_stft = torch.reshape(srcs_stft, (batch, model.num_srcs, f, t))
+
+  psa_mask = compute_PSA_mask(feats, srcs_stft)
+
+  losses = torch.stack([batch_mask_loss(feats, masks, psa_mask[:, torch.LongTensor(perm)]) for perm in itertools.permutations(range(model.num_srcs))], dim=-1)
+
+  min_losses, indices = torch.min(losses, -1)
+
+  loss += torch.sum(min_losses)
+  norm += torch.tensor(batch)
+
+  return loss/norm, norm
+
+
+
+def compute_cv_loss(model, epoch, batch_sample, plotdir=""):
   loss = 0
   norm = 0
 
@@ -135,7 +199,7 @@ def compute_loss(model, epoch, batch_sample, plotdir=""):
 
   model.zero_grad()
   
-  est_srcs = model(mix)
+  est_srcs = model.compute_audio(mix)
   est_srcs = est_srcs[:, :, :srcs.shape[2]]
 
   for i in range(len(length)):
@@ -159,7 +223,7 @@ def estimate_sources(model, batch_sample, out_dir, save_diagnostics=False):
 
   model.zero_grad()
 
-  est_srcs = model(mix)
+  est_srcs = model.compute_audio(mix)
 
   for i in range(len(length)):
     est_srcs[i, :, length[i]:] = 0
@@ -169,4 +233,4 @@ def estimate_sources(model, batch_sample, out_dir, save_diagnostics=False):
       s = est_srcs[i, src, 0:length[i]].cpu().numpy()
       s = 0.9*s/np.max(np.abs(s))
       wav = s*32767
-      scipy.io.wavfile.write(out_dir+"/s"+str(src+1)+'/'+name[i]+".wav", 8000, wav.astype('int16'))
+      scipy.io.wavfile.write(out_dir+"/s"+str(src+1)+'/'+name[i]+".wav", 16000, wav.astype('int16'))
